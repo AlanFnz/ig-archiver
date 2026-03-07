@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "IG Archiver",
+  "version": "1.0.0",
+  "description": "Scrape external links from Instagram DMs and archive them with AI summaries and screenshots.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["*://www.instagram.com/*"],
+  "content_scripts": [
+    {
+      "matches": ["*://www.instagram.com/*"],
+      "js": ["content-script.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ],
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "IG Archiver"
+  }
+}
