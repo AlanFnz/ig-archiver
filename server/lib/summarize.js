@@ -13,7 +13,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
  */
 export async function summarize(url, title, caption, description, absoluteScreenshotPath) {
   if (process.env.MOCK === 'true') {
-    return { summary: `mock summary for ${new URL(url).hostname}`, category: 'Leisure', keywords: 'mock, keywords' };
+    return { summary: `mock summary for ${new URL(url).hostname}`, category: VALID_CATEGORIES[0], keywords: 'mock, keywords' };
   }
 
   const imageData = await fs.readFile(absoluteScreenshotPath);
@@ -62,9 +62,9 @@ Respond with only the raw JSON object, no markdown fences.`;
     : [];
 
   if (validParts.length === 0) {
-    console.warn(`[ig-archiver] unexpected category "${parsed.category}" from model, defaulting to Leisure`);
+    console.warn(`[ig-archiver] unexpected category "${parsed.category}" from model, defaulting to ${VALID_CATEGORIES[0]}`);
   }
-  const category = validParts.length > 0 ? validParts.join(', ') : 'Leisure';
+  const category = validParts.length > 0 ? validParts.join(', ') : VALID_CATEGORIES[0];
 
   return { summary, category, keywords };
 }
