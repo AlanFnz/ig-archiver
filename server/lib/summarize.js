@@ -54,14 +54,15 @@ Respond with only the raw JSON object, no markdown fences.`;
     parsed = match ? JSON.parse(match[0]) : {};
   }
 
-  const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : 'No summary available.';
+  const summary  = typeof parsed.summary  === 'string' ? parsed.summary.trim()  : 'No summary available.';
+  const keywords = typeof parsed.keywords === 'string' ? parsed.keywords.trim() : '';
 
   if (!VALID_CATEGORIES.includes(parsed.category)) {
     console.warn(`[ig-archiver] unexpected category "${parsed.category}" from model, defaulting to Leisure`);
   }
   const category = VALID_CATEGORIES.includes(parsed.category) ? parsed.category : 'Leisure';
 
-  return { summary, category };
+  return { summary, category, keywords };
 }
 
 export { VALID_CATEGORIES } from './config.js';
