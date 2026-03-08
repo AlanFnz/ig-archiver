@@ -21,7 +21,8 @@ export async function summarize(url, title, caption, description, absoluteScreen
 
   const prompt = `You are a personal web archiver assistant. Analyze the screenshot and metadata below, then return a JSON object with exactly two fields:
 - "summary": a single concise sentence (max 30 words) describing what the page is about.
-- "category": exactly one of these categories: ${VALID_CATEGORIES.join(', ')}.
+- "category": one or two tops of these categories: ${VALID_CATEGORIES.join(', ')}.
+- "keywords": comma separated list of maximum three relevant keywords.
 
 URL: ${url}
 Page Title: ${title || '(not available)'}
