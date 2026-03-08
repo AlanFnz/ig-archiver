@@ -39,7 +39,7 @@ Respond with only the raw JSON object, no markdown fences.`;
         { type: 'text', text: prompt },
       ],
     }],
-    max_tokens: 120,
+    max_tokens: 160,
     temperature: 0.3,
   });
 
@@ -57,10 +57,14 @@ Respond with only the raw JSON object, no markdown fences.`;
   const summary  = typeof parsed.summary  === 'string' ? parsed.summary.trim()  : 'No summary available.';
   const keywords = typeof parsed.keywords === 'string' ? parsed.keywords.trim() : '';
 
-  if (!VALID_CATEGORIES.includes(parsed.category)) {
+  const validParts = typeof parsed.category === 'string'
+    ? parsed.category.split(',').map(c => c.trim()).filter(c => VALID_CATEGORIES.includes(c))
+    : [];
+
+  if (validParts.length === 0) {
     console.warn(`[ig-archiver] unexpected category "${parsed.category}" from model, defaulting to Leisure`);
   }
-  const category = VALID_CATEGORIES.includes(parsed.category) ? parsed.category : 'Leisure';
+  const category = validParts.length > 0 ? validParts.join(', ') : 'Leisure';
 
   return { summary, category, keywords };
 }
