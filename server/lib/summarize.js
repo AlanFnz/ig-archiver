@@ -9,17 +9,17 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
  * send page content to GPT-4o vision and get back a structured summary.
  * uses the screenshot image + caption + title for richer context.
  *
- * @returns {{ summary: string, category: string }}
+ * @returns {{ summary: string, category: string, keywords: string }} summary is a concise description of the page, category is one of the predefined categories, and keywords is a comma-separated list of relevant keywords.
  */
 export async function summarize(url, title, caption, description, absoluteScreenshotPath) {
   if (process.env.MOCK === 'true') {
-    return { summary: `mock summary for ${new URL(url).hostname}`, category: 'Leisure' };
+    return { summary: `mock summary for ${new URL(url).hostname}`, category: 'Leisure', keywords: 'mock, keywords' };
   }
 
   const imageData = await fs.readFile(absoluteScreenshotPath);
   const base64 = imageData.toString('base64');
 
-  const prompt = `You are a personal web archiver assistant. Analyze the screenshot and metadata below, then return a JSON object with exactly two fields:
+  const prompt = `You are a personal web archiver assistant. Analyze the screenshot and metadata below, then return a JSON object with exactly three fields:
 - "summary": a single concise sentence (max 30 words) describing what the page is about.
 - "category": one or two tops of these categories: ${VALID_CATEGORIES.join(', ')}.
 - "keywords": comma separated list of maximum three relevant keywords.
