@@ -1,10 +1,10 @@
 import type { Platform, ScrapeResult } from './types';
 
-/**
- * stub for future Electron support.
- * will delegate to ipcRenderer.invoke('scrape-links') when implemented.
- */
 export const electronPlatform: Platform = {
+  async scrollOnce(): Promise<boolean> {
+    throw new Error('electronPlatform: not yet implemented');
+  },
+
   async scrapeLinks(): Promise<ScrapeResult> {
     throw new Error('electronPlatform: not yet implemented');
   },
