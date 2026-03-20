@@ -1,16 +1,117 @@
 /**
+ * autoScrollOnce — injected into the page via chrome.scripting.executeScript (world: MAIN)
+ *
+ * serialization constraint: self-contained, no module-level closures
+ *
+ * scrolls the conversation container to the top, then waits up to 2.5s for
+ * instagram to fetch a new batch of messages (detected via edge count increase)
+ * returns true if new content was loaded, false if nothing new arrived
+ */
+export async function autoScrollOnce(): Promise<boolean> {
+  function totalEdges(): number {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const threads: Record<string, any> = (window as any).__igSlideThreads ?? {};
+    return Object.values(threads).reduce((n: number, t: any) => n + (t?.edges?.length ?? 0), 0);
+  }
+
+  // resolve the current thread's fbid — same logic as scrapeExternalLinks
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const slideThreads: any  = (window as any).__igSlideThreads  ?? {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const threadKeyMap: any  = (window as any).__igThreadKeyMap  ?? {};
+  const lastFbid: string | null = (window as any).__igLastThreadFbid ?? null;
+
+  const threadMatch = window.location.pathname.match(/\/direct\/t\/(\d+)\//);
+  const urlThreadId = threadMatch?.[1] ?? null;
+
+  const fbid: string | null =
+    (urlThreadId && threadKeyMap[urlThreadId]) ||
+    (urlThreadId && slideThreads[urlThreadId] ? urlThreadId : null) ||
+    lastFbid;
+
+  if (!fbid || !slideThreads[fbid]) return false;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const stored: any = slideThreads[fbid];
+  const pageInfo = stored.pageInfo ?? {};
+
+  console.log('[ig-archiver] autoScrollOnce — pageInfo:', JSON.stringify(pageInfo));
+
+  // has_next_page === false means we've reached the start of the conversation
+  if (pageInfo.has_next_page === false) return false;
+
+  const nextCursor: string = pageInfo.end_cursor;
+
+  // prefer the fetch__SlideThread body because it supports cursor pagination
+  // stored.bodyStr is often get_slide_thread_nullable (initial load) which
+  // ignores the cursor and always returns the same first page
+  const bodyStr: string = (window as any).__igFetchBodyStr ?? stored.bodyStr ?? '';
+  const headers: Record<string, string> = (window as any).__igFetchHeaders ?? stored.headers ?? {};
+
+  console.log('[ig-archiver] autoScrollOnce — nextCursor:', nextCursor);
+  console.log('[ig-archiver] autoScrollOnce — using fetch body:', !!(window as any).__igFetchBodyStr);
+  console.log('[ig-archiver] autoScrollOnce — variables:', bodyStr ? new URLSearchParams(bodyStr).get('variables') : 'none');
+
+  if (!nextCursor || !bodyStr) return false;
+
+  // update the cursor in the variables param and replay the XHR
+  // the content script intercepts the response automatically
+  let newBodyStr: string;
+  try {
+    const params  = new URLSearchParams(bodyStr);
+    const rawVars = params.get('variables');
+    if (!rawVars) return false;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const vars: Record<string, any> = JSON.parse(rawVars);
+
+    // find whichever cursor field the original request used.
+    // 'after' is the standard graphql relay pagination field instagram uses.
+    const cursorKey = ['after', 'before', 'cursor', 'before_cursor']
+      .find(k => k in vars) ?? 'after';
+    vars[cursorKey] = nextCursor;
+    // remove any stale after_cursor field we may have injected in prior calls
+    delete vars['after_cursor'];
+
+    params.set('variables', JSON.stringify(vars));
+    newBodyStr = params.toString();
+  } catch (_) {
+    return false;
+  }
+
+  const before = totalEdges();
+
+  await new Promise<void>(resolve => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/graphql', true);
+    Object.entries(headers).forEach(([k, v]) => {
+      try { xhr.setRequestHeader(k, v); } catch (_) {}
+    });
+    xhr.addEventListener('load',  () => resolve());
+    xhr.addEventListener('error', () => resolve());
+    xhr.send(newBodyStr);
+  });
+
+  // give the content script a moment to process the response
+  await new Promise<void>(r => setTimeout(r, 300));
+  console.log('[ig-archiver] autoScrollOnce — edges before:', before, '→ after:', totalEdges());
+  console.log('[ig-archiver] autoScrollOnce — updated pageInfo:', JSON.stringify(stored.pageInfo));
+  return totalEdges() > before;
+}
+
+/**
  * scrapeExternalLinks — injected into the page via chrome.scripting.executeScript
- * with world: 'MAIN', sharing window with the content-script.js interceptor.
+ * with world: 'MAIN', sharing window with the content-script.js interceptor
  *
  * serialization constraint: self-contained, no module-level closures,
  * TypeScript annotations are stripped so they're fine at runtime.
  *
  * strategy:
  *  1. find the current thread's data in window.__igSlideThreads (populated by the
- *     content script intercepting instagram's get_slide_thread_nullable graphql calls).
- *     thread_key → thread_fbid lookup is done via window.__igThreadKeyMap.
- *  2. extract target_url from SlideMessagePortraitXMA / SlideMessageStandardXMA nodes.
- *  3. fall back to DOM collection if no intercepted data is available.
+ *     content script intercepting instagram's get_slide_thread_nullable graphql calls)
+ *     thread_key → thread_fbid lookup is done via window.__igThreadKeyMap
+ *  2. extract target_url from SlideMessagePortraitXMA / SlideMessageStandardXMA nodes
+ *  3. fall back to DOM collection if no intercepted data is available
  */
 export async function scrapeExternalLinks(): Promise<string[]> {
   const seen = new Set<string>();
@@ -41,7 +142,7 @@ export async function scrapeExternalLinks(): Promise<string[]> {
     }
   }
 
-  // --- primary path: use content-script interceptor data ---
+  // primary path: use content-script interceptor data
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const slideThreads: any = (window as any).__igSlideThreads ?? {};
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

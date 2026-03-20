@@ -13,7 +13,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
  */
 export async function summarize(url, title, caption, description, absoluteScreenshotPath) {
   if (process.env.MOCK === 'true') {
-    return { summary: `mock summary for ${new URL(url).hostname}`, category: 'Leisure', keywords: 'mock, keywords' };
+    return { summary: `mock summary for ${new URL(url).hostname}`, category: VALID_CATEGORIES[0], keywords: 'mock, keywords' };
   }
 
   const imageData = await fs.readFile(absoluteScreenshotPath);
@@ -39,7 +39,7 @@ Respond with only the raw JSON object, no markdown fences.`;
         { type: 'text', text: prompt },
       ],
     }],
-    max_tokens: 120,
+    max_tokens: 160,
     temperature: 0.3,
   });
 
@@ -54,14 +54,19 @@ Respond with only the raw JSON object, no markdown fences.`;
     parsed = match ? JSON.parse(match[0]) : {};
   }
 
-  const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : 'No summary available.';
+  const summary  = typeof parsed.summary  === 'string' ? parsed.summary.trim()  : 'No summary available.';
+  const keywords = typeof parsed.keywords === 'string' ? parsed.keywords.trim() : '';
 
-  if (!VALID_CATEGORIES.includes(parsed.category)) {
-    console.warn(`[ig-archiver] unexpected category "${parsed.category}" from model, defaulting to Leisure`);
+  const validParts = typeof parsed.category === 'string'
+    ? parsed.category.split(',').map(c => c.trim()).filter(c => VALID_CATEGORIES.includes(c))
+    : [];
+
+  if (validParts.length === 0) {
+    console.warn(`[ig-archiver] unexpected category "${parsed.category}" from model, defaulting to ${VALID_CATEGORIES[0]}`);
   }
-  const category = VALID_CATEGORIES.includes(parsed.category) ? parsed.category : 'Leisure';
+  const category = validParts.length > 0 ? validParts.join(', ') : VALID_CATEGORIES[0];
 
-  return { summary, category };
+  return { summary, category, keywords };
 }
 
 export { VALID_CATEGORIES } from './config.js';
