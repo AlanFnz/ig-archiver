@@ -3,5 +3,6 @@ export interface ScrapeResult {
 }
 
 export interface Platform {
+  scrollOnce(): Promise<boolean>;
   scrapeLinks(): Promise<ScrapeResult>;
 }

@@ -71,10 +71,10 @@ app.post('/archive', async (req, res) => {
 
         const { screenshotPath, absoluteScreenshotPath, title, description, caption } =
           await capturePageInfo(browser, url);
-        const { summary, category } =
+        const { summary, category, keywords } =
           await summarize(url, title, caption, description, absoluteScreenshotPath);
 
-        const entry = { url, title, metaDescription: description, summary, category, screenshotPath, archivedAt: now };
+        const entry = { url, title, metaDescription: description, summary, category, keywords, screenshotPath, archivedAt: now };
 
         const idx = byUrl.get(url);
         if (idx !== undefined) {

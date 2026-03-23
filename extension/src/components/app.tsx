@@ -3,6 +3,7 @@ import type { Platform } from '../platform/types';
 import type { ScanState, StatusEntry, StatusType } from '../types';
 import { archiveStream } from '../lib/archiveStream';
 import { truncate } from '../lib/truncate';
+import { SCROLL_LOADS } from '../lib/config';
 import { Header } from './header';
 import { ScanButton } from './scan-button';
 import { ProgressBar } from './progress-bar';
@@ -49,9 +50,14 @@ export function App({ platform }: AppProps) {
     setState({ phase: 'scanning', processed: 0, total: 0, statusFeed: [] });
     idRef.current = 0;
 
-    setSingleStatus('Fetching conversation history from Instagram…', 'info');
-
     try {
+      for (let i = 0; i < SCROLL_LOADS; i++) {
+        setSingleStatus(`Loading conversation history… (${i + 1} / ${SCROLL_LOADS})`, 'info');
+        const hasMore = await platform.scrollOnce();
+        if (!hasMore) break;
+      }
+
+      setSingleStatus('Scanning for shared posts and reels…', 'info');
       const { urls } = await platform.scrapeLinks();
 
       if (urls.length === 0) {

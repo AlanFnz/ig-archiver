@@ -11,4 +11,4 @@ export const SESSION_FILE     = path.join(ROOT, 'session.json');
 export const VIEWPORT_W       = parseInt(process.env.SCREENSHOT_WIDTH  ?? '1280', 10);
 export const VIEWPORT_H       = parseInt(process.env.SCREENSHOT_HEIGHT ?? '720',  10);
 export const TIMEOUT_MS       = 30_000;
-export const VALID_CATEGORIES = ['References', 'Memes', 'Inspiration', 'Tutorials', 'News', "Ai", "Tools", "Music production", "Movies and shows"];
+export const VALID_CATEGORIES = ['References', 'Memes', 'Inspiration', 'Tutorials', 'News', 'Ai', 'Tools', 'Music production', 'Movies and shows', 'Design', 'Music', 'Politics'];

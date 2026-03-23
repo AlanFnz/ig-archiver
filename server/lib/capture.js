@@ -65,7 +65,7 @@ export async function capturePageInfo(browser, url) {
     });
 
     return {
-      screenshotPath:         path.relative(path.join(__dirname, '..'), absoluteScreenshotPath),
+      screenshotPath:         path.relative(path.dirname(SCREENSHOTS), absoluteScreenshotPath),
       absoluteScreenshotPath,
       title:                  title.trim(),
       description:            metaDesc.trim(),
