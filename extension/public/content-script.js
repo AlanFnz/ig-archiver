@@ -1,11 +1,13 @@
 // runs in MAIN world at document_start on instagram.com pages.
 // intercepts XHR to capture instagram's slide/graphql DM thread responses.
 (function () {
-  if (window.__igDmFetchState !== undefined) return; // already patched
+  if (window.__igDmFetchState !== undefined) return;
   window.__igDmFetchState = {};
-  window.__igSlideThreads = {};  // thread_fbid → { edges, pageInfo, headers, bodyStr }
-  window.__igThreadKeyMap = {}; // thread_key / old thread_id → thread_fbid
+  window.__igSlideThreads = {}; 
+  window.__igThreadKeyMap = {}; 
   window.__igLastThreadFbid = null;
+  window.__igFetchBodyStr = null;  
+  window.__igFetchHeaders = null;  
 
   var origOpen = XMLHttpRequest.prototype.open;
   var origSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
@@ -30,7 +32,6 @@
       return origSend.apply(this, arguments);
     }
 
-    // capture body as string for doc_id / variables extraction
     var bodyStr = '';
     if (!body) {
       bodyStr = '';
@@ -52,7 +53,6 @@
         var data = JSON.parse(self.responseText);
         if (!data || !data.data) return;
 
-        // build thread_key → thread_fbid mapping from mailbox responses
         var mailboxKey = Object.keys(data.data).find(function (k) {
           return k.includes('mailbox') || k.includes('inbox');
         });
@@ -96,6 +96,10 @@
         if (msgEdges.length > 0) {
           stored.headers = capturedHeaders;
           stored.bodyStr = bodyStr;
+          if (data.data.fetch__SlideThread) {
+            window.__igFetchBodyStr = bodyStr;
+            window.__igFetchHeaders = capturedHeaders;
+          }
         }
 
         if (igThread.thread_key) window.__igThreadKeyMap[igThread.thread_key] = threadFbid;
