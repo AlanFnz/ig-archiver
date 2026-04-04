@@ -25,7 +25,12 @@ export const chromePlatform: Platform = {
       world: 'MAIN',
     });
 
-    const urls = results?.[0]?.result ?? [];
-    return { urls };
+    const raw = results?.[0]?.result ?? [];
+    const urls = raw.map((r: { url: string }) => r.url);
+    const urlMessages: Record<string, string> = {};
+    for (const { url, message } of raw) {
+      if (message) urlMessages[url] = message;
+    }
+    return { urls, urlMessages };
   },
 };
