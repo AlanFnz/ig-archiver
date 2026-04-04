@@ -58,7 +58,7 @@ export function App({ platform }: AppProps) {
       }
 
       setSingleStatus('Scanning for shared posts and reels…', 'info');
-      const { urls } = await platform.scrapeLinks();
+      const { urls, urlMessages } = await platform.scrapeLinks();
 
       if (urls.length === 0) {
         setState(s => ({
@@ -83,7 +83,7 @@ export function App({ platform }: AppProps) {
 
       let processed = 0;
 
-      for await (const event of archiveStream(urls)) {
+      for await (const event of archiveStream(urls, urlMessages)) {
         switch (event.type) {
           case 'progress':
             processed = event.index;
