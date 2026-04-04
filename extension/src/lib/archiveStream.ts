@@ -2,11 +2,14 @@ import type { ArchiveEvent } from '../types';
 
 const SERVER_URL = 'http://localhost:3000';
 
-export async function* archiveStream(urls: string[]): AsyncGenerator<ArchiveEvent> {
+export async function* archiveStream(
+  urls: string[],
+  urlMessages: Record<string, string> = {},
+): AsyncGenerator<ArchiveEvent> {
   const res = await fetch(`${SERVER_URL}/archive`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ urls }),
+    body: JSON.stringify({ urls, urlMessages }),
   });
 
   if (!res.ok) {
