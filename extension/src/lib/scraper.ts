@@ -99,6 +99,11 @@ export async function autoScrollOnce(): Promise<boolean> {
   return totalEdges() > before;
 }
 
+export interface ScrapedLink {
+  url: string;
+  message?: string;
+}
+
 /**
  * scrapeExternalLinks — injected into the page via chrome.scripting.executeScript
  * with world: 'MAIN', sharing window with the content-script.js interceptor
@@ -111,19 +116,20 @@ export async function autoScrollOnce(): Promise<boolean> {
  *     content script intercepting instagram's get_slide_thread_nullable graphql calls)
  *     thread_key → thread_fbid lookup is done via window.__igThreadKeyMap
  *  2. extract target_url from SlideMessagePortraitXMA / SlideMessageStandardXMA nodes
+ *     and any user-typed text in the same message node
  *  3. fall back to DOM collection if no intercepted data is available
  */
-export async function scrapeExternalLinks(): Promise<string[]> {
+export async function scrapeExternalLinks(): Promise<ScrapedLink[]> {
   const seen = new Set<string>();
-  const urls: string[] = [];
+  const links: ScrapedLink[] = [];
 
-  function addUrl(rawUrl: string): void {
+  function addLink(rawUrl: string, message?: string): void {
     try {
       const clean = new URL(rawUrl);
       const path = clean.origin + clean.pathname;
       if (!seen.has(path)) {
         seen.add(path);
-        urls.push(path);
+        links.push({ url: path, ...(message ? { message } : {}) });
       }
     } catch {
       // skip malformed URLs
@@ -131,14 +137,26 @@ export async function scrapeExternalLinks(): Promise<string[]> {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function extractUrlsFromEdges(edges: any[]): void {
+  function extractLinksFromEdges(edges: any[]): void {
     for (const edge of edges) {
-      const xma = edge?.node?.content?.xma;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const node: any = edge?.node;
+      const xma = node?.content?.xma;
       if (!xma?.target_url) continue;
       const url: string = xma.target_url;
-      if (url.includes('instagram.com/p/') || url.includes('instagram.com/reel/')) {
-        addUrl(url);
-      }
+      if (!url.includes('instagram.com/p/') && !url.includes('instagram.com/reel/')) continue;
+
+      // check candidate fields for any user-typed text accompanying the link
+      const message: string | undefined = (
+        (typeof node?.text === 'string' && node.text.trim()) ||
+        (typeof node?.message === 'string' && node.message.trim()) ||
+        (typeof node?.message?.text === 'string' && node.message.text.trim()) ||
+        (typeof node?.content?.text === 'string' && node.content.text.trim()) ||
+        (typeof xma?.message === 'string' && xma.message.trim()) ||
+        undefined
+      ) || undefined;
+
+      addLink(url, message);
     }
   }
 
@@ -158,11 +176,11 @@ export async function scrapeExternalLinks(): Promise<string[]> {
     lastFbid;
 
   if (fbid && slideThreads[fbid]) {
-    extractUrlsFromEdges(slideThreads[fbid].edges);
-    if (urls.length > 0) return urls;
+    extractLinksFromEdges(slideThreads[fbid].edges);
+    if (links.length > 0) return links;
   }
 
-  // --- fallback: DOM collection for currently visible items ---
+  // --- fallback: DOM collection for currently visible items (no message data available) ---
   function mediaIdToShortcode(mediaId: string): string {
     const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
     let id = BigInt(mediaId);
@@ -184,15 +202,11 @@ export async function scrapeExternalLinks(): Promise<string[]> {
       const mediaId = atob(base64Part).split('_')[0];
       const shortcode = mediaIdToShortcode(mediaId);
       const isReel = !!btn.querySelector('svg[aria-label="Clip"]');
-      const url = `https://www.instagram.com/${isReel ? 'reel' : 'p'}/${shortcode}/`;
-      if (!seen.has(url)) {
-        seen.add(url);
-        urls.push(url);
-      }
+      addLink(`https://www.instagram.com/${isReel ? 'reel' : 'p'}/${shortcode}/`);
     } catch {
       // skip if URL parsing or base64 decode fails
     }
   });
 
-  return urls;
+  return links;
 }

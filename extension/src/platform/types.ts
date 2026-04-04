@@ -1,5 +1,6 @@
 export interface ScrapeResult {
   urls: string[];
+  urlMessages: Record<string, string>;
 }
 
 export interface Platform {
