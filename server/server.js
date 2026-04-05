@@ -38,7 +38,7 @@ app.use('/screenshots', express.static(SCREENSHOTS));
  *   { type: 'error',    url: string, message: string }
  */
 app.post('/archive', async (req, res) => {
-  const { urls } = req.body;
+  const { urls, urlMessages = {} } = req.body;
 
   if (!Array.isArray(urls) || urls.length === 0) {
     return res.status(400).json({ error: 'Request body must contain a non-empty "urls" array.' });
@@ -71,10 +71,11 @@ app.post('/archive', async (req, res) => {
 
         const { screenshotPath, absoluteScreenshotPath, title, description, caption } =
           await capturePageInfo(browser, url);
+        const userMessage = urlMessages[url] || undefined;
         const { summary, category, keywords } =
-          await summarize(url, title, caption, description, absoluteScreenshotPath);
+          await summarize(url, title, caption, description, absoluteScreenshotPath, userMessage);
 
-        const entry = { url, title, metaDescription: description, summary, category, keywords, screenshotPath, archivedAt: now };
+        const entry = { url, title, metaDescription: description, userMessage, summary, category, keywords, screenshotPath, archivedAt: now };
 
         const idx = byUrl.get(url);
         if (idx !== undefined) {
