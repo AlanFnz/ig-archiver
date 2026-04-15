@@ -7,7 +7,12 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "login": "node login.js"
+    "login": "node login.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.0"
   },
   "dependencies": {
     "cors": "^2.8.5",

@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "react": "^19.2.4",
@@ -14,6 +16,8 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
+    "jsdom": "^25.0.0",
+    "vitest": "^2.0.0",
     "@types/chrome": "^0.0.301",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
