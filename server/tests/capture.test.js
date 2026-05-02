@@ -17,6 +17,7 @@ function makeMockBrowser({
   title = 'Page Title',
   metaDesc = 'Meta description',
   caption = 'Caption text',
+  currentUrl = 'https://www.instagram.com/p/TestPost123/',
 } = {}) {
   let gotoCount = 0
   const page = {
@@ -25,6 +26,7 @@ function makeMockBrowser({
       if (failBothGotos) throw new Error(`${waitUntil} failed`)
       if (failFirstGoto && waitUntil === 'load') throw new Error('load timed out')
     }),
+    url: vi.fn().mockReturnValue(currentUrl),
     title: vi.fn().mockResolvedValue(title),
     $eval: vi.fn().mockResolvedValue(metaDesc),
     evaluate: vi.fn().mockResolvedValue(caption),
@@ -99,5 +101,10 @@ describe('capturePageInfo', () => {
     const { browser } = makeMockBrowser()
     const result = await capturePageInfo(browser, url)
     expect(result.screenshotPath).toMatch(/^screenshots\/[a-f0-9]{12}\.png$/)
+  })
+
+  it('throws an error if redirected to the login page', async () => {
+    const { browser } = makeMockBrowser({ currentUrl: 'https://www.instagram.com/accounts/login/' })
+    await expect(capturePageInfo(browser, url)).rejects.toThrow('Instagram session expired or invalid')
   })
 })

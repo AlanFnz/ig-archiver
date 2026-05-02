@@ -40,6 +40,11 @@ export async function capturePageInfo(browser, url) {
       }
     }
 
+    const currentUrl = page.url();
+    if (currentUrl.includes('instagram.com/accounts/login') || currentUrl.includes('/login/')) {
+      throw new Error('Instagram session expired or invalid. Please re-authenticate by running `yarn run login`.');
+    }
+
     const title = await page.title().catch(() => '');
     const metaDesc = await page
       .$eval('meta[name="description"]', el => el.getAttribute('content') ?? '')
