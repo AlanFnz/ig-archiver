@@ -1,9 +1,7 @@
 import { promises as fs } from 'fs';
 import OpenAI from 'openai';
 
-import { VALID_CATEGORIES } from './config.js';
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+import { getConfig } from './config.js';
 
 /**
  * send page content to GPT-4o vision and get back a structured summary.
@@ -12,12 +10,23 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
  * @returns {{ summary: string, category: string, keywords: string }} summary is a concise description of the page, category is one of the predefined categories, and keywords is a comma-separated list of relevant keywords.
  */
 export async function summarize(url, title, caption, description, absoluteScreenshotPath, userMessage) {
+  const config = getConfig();
+  const categories = config.categories;
+
   if (process.env.MOCK === 'true') {
-    return { summary: `mock summary for ${new URL(url).hostname}`, category: VALID_CATEGORIES[0], keywords: 'mock, keywords' };
+    return { summary: `mock summary for ${new URL(url).hostname}`, category: categories[0], keywords: 'mock, keywords' };
   }
 
   const imageData = await fs.readFile(absoluteScreenshotPath);
   const base64 = imageData.toString('base64');
+  if (!config.openaiApiKey) {
+    throw new Error('OpenAI API key is not configured. Add it in Settings or OPENAI_API_KEY.');
+  }
+
+  const openai = new OpenAI({
+    apiKey: config.openaiApiKey,
+    ...(config.openaiBaseUrl ? { baseURL: config.openaiBaseUrl } : {}),
+  });
 
   const intentClause = userMessage
     ? `The user saved this with the message: "${userMessage}". Use this as the primary signal for their intent — let it shape the summary wording and tip the category toward what the user cares about, not just what the page is generically about.`
@@ -25,7 +34,7 @@ export async function summarize(url, title, caption, description, absoluteScreen
 
   const prompt = `You are a personal web archiver assistant. Analyze the screenshot and metadata below, then return a JSON object with exactly three fields:
 - "summary": a single concise sentence (max 30 words) describing what the page is about and, if intent is clear, why the user saved it.
-- "category": one or two of these categories: ${VALID_CATEGORIES.join(', ')}.
+- "category": one or two of these categories: ${categories.join(', ')}.
 - "keywords": comma separated list of maximum three relevant keywords.
 ${intentClause}
 URL: ${url}
@@ -35,7 +44,7 @@ Caption: ${caption || description || '(not available)'}
 Respond with only the raw JSON object, no markdown fences.`;
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o',
+    model: config.openaiModel,
     messages: [{
       role: 'user',
       content: [
@@ -62,13 +71,13 @@ Respond with only the raw JSON object, no markdown fences.`;
   const keywords = typeof parsed.keywords === 'string' ? parsed.keywords.trim() : '';
 
   const validParts = typeof parsed.category === 'string'
-    ? parsed.category.split(',').map(c => c.trim()).filter(c => VALID_CATEGORIES.includes(c))
+    ? parsed.category.split(',').map(c => c.trim()).filter(c => categories.includes(c))
     : [];
 
   if (validParts.length === 0) {
-    console.warn(`[ig-archiver] unexpected category "${parsed.category}" from model, defaulting to ${VALID_CATEGORIES[0]}`);
+    console.warn(`[ig-archiver] unexpected category "${parsed.category}" from model, defaulting to ${categories[0]}`);
   }
-  const category = validParts.length > 0 ? validParts.join(', ') : VALID_CATEGORIES[0];
+  const category = validParts.length > 0 ? validParts.join(', ') : categories[0];
 
   return { summary, category, keywords };
 }

@@ -7,6 +7,15 @@ vi.mock('../lib/config.js', () => ({
   VIEWPORT_W: 1280,
   VIEWPORT_H: 720,
   TIMEOUT_MS: 30_000,
+  CONCURRENCY: 3,
+  VALID_CATEGORIES: ['References', 'Memes', 'Inspiration', 'Tutorials', 'News', 'Ai', 'Tools', 'Music production', 'Movies and shows', 'Design', 'Music', 'Politics'],
+  getConfig: () => ({
+    viewportW: 1280,
+    viewportH: 720,
+    timeoutMs: 30_000,
+    concurrency: 3,
+    categories: ['References', 'Memes', 'Inspiration', 'Tutorials', 'News', 'Ai', 'Tools', 'Music production', 'Movies and shows', 'Design', 'Music', 'Politics'],
+  }),
 }))
 
 import { capturePageInfo } from '../lib/capture.js'

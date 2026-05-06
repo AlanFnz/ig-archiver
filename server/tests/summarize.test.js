@@ -5,6 +5,15 @@ const { mockCreate, mockReadFile } = vi.hoisted(() => ({
   mockReadFile: vi.fn(),
 }))
 
+const { runtimeConfig } = vi.hoisted(() => ({
+  runtimeConfig: {
+    categories: ['References', 'Memes', 'Inspiration', 'Tutorials', 'Music', 'Design'],
+    openaiApiKey: 'sk-test',
+    openaiModel: 'gpt-4o-mini',
+    openaiBaseUrl: '',
+  },
+}))
+
 vi.mock('openai', () => ({
   default: class OpenAI {
     chat = { completions: { create: mockCreate } }
@@ -13,6 +22,11 @@ vi.mock('openai', () => ({
 
 vi.mock('fs', () => ({
   promises: { readFile: mockReadFile },
+}))
+
+vi.mock('../lib/config.js', () => ({
+  VALID_CATEGORIES: runtimeConfig.categories,
+  getConfig: () => ({ ...runtimeConfig, categories: [...runtimeConfig.categories] }),
 }))
 
 import { summarize } from '../lib/summarize.js'
@@ -42,6 +56,9 @@ describe('summarize — live mode', () => {
     delete process.env.MOCK
     vi.clearAllMocks()
     mockReadFile.mockResolvedValue(Buffer.from('fake-image-bytes'))
+    runtimeConfig.openaiApiKey = 'sk-test'
+    runtimeConfig.openaiModel = 'gpt-4o-mini'
+    runtimeConfig.openaiBaseUrl = ''
   })
 
   it('parses a valid JSON response', async () => {
@@ -123,5 +140,21 @@ describe('summarize — live mode', () => {
     const imageContent = mockCreate.mock.calls[0][0].messages[0].content
       .find(c => c.type === 'image_url')
     expect(imageContent.image_url.url).toMatch(/^data:image\/png;base64,/)
+  })
+
+  it('uses the configured model', async () => {
+    mockCreate.mockResolvedValueOnce(modelReturns(JSON.stringify({
+      summary: 'S', category: 'Memes', keywords: '',
+    })))
+    runtimeConfig.openaiModel = 'custom-model'
+    await summarize('https://www.instagram.com/p/abc/', '', '', '', FAKE_PATH)
+
+    expect(mockCreate.mock.calls[0][0].model).toBe('custom-model')
+  })
+
+  it('fails with a helpful message when no API key is configured', async () => {
+    runtimeConfig.openaiApiKey = ''
+    await expect(summarize('https://www.instagram.com/p/abc/', '', '', '', FAKE_PATH))
+      .rejects.toThrow('OpenAI API key is not configured')
   })
 })

@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import path from 'path';
 
-import { SCREENSHOTS, SESSION_FILE, VIEWPORT_W, VIEWPORT_H, TIMEOUT_MS } from './config.js';
+import { SCREENSHOTS, SESSION_FILE, getConfig } from './config.js';
 export { SCREENSHOTS };
 
 /**
@@ -13,8 +13,9 @@ export { SCREENSHOTS };
  * @returns {{ screenshotPath: string, absoluteScreenshotPath: string, title: string, description: string, caption: string }}
  */
 export async function capturePageInfo(browser, url) {
+  const config = getConfig();
   const context = await browser.newContext({
-    viewport: { width: VIEWPORT_W, height: VIEWPORT_H },
+    viewport: { width: config.viewportW, height: config.viewportH },
     userAgent:
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ' +
       'AppleWebKit/537.36 (KHTML, like Gecko) ' +
@@ -28,11 +29,11 @@ export async function capturePageInfo(browser, url) {
     // instagram keeps persistent connections so networkidle never fires;
     // 'load' waits for the window load event which is sufficient for screenshots.
     try {
-      await page.goto(url, { waitUntil: 'load', timeout: TIMEOUT_MS });
+      await page.goto(url, { waitUntil: 'load', timeout: config.timeoutMs });
     } catch (loadErr) {
       // fall back to domcontentloaded if load itself times out
       try {
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS });
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: config.timeoutMs });
       } catch (fallbackErr) {
         throw new Error(
           `Navigation failed (load: ${loadErr.message}; domcontentloaded: ${fallbackErr.message})`
@@ -66,7 +67,7 @@ export async function capturePageInfo(browser, url) {
     await page.screenshot({
       path: absoluteScreenshotPath,
       type: 'png',
-      clip: { x: 0, y: 0, width: VIEWPORT_W, height: VIEWPORT_H },
+      clip: { x: 0, y: 0, width: config.viewportW, height: config.viewportH },
     });
 
     return {
