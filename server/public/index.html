@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>IG Archiver — Library</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #08080d;
+      --surface: rgb(19 19 29 / 78%);
+      --surface-solid: #14141e;
+      --surface-raised: #1a1a27;
+      --border: rgb(255 255 255 / 7%);
+      --border-bright: rgb(255 255 255 / 13%);
+      --text: #eeeeF7;
+      --muted: #8d8d9f;
+      --subtle: #656578;
+      --purple: #9c7bd1;
+      --blue: #5da6ed;
+      --green: #69c49a;
+      --red: #ef7777;
+      --shadow: 0 22px 60px rgb(0 0 0 / 35%);
+      font-family: Inter, system-ui, sans-serif;
+      color-scheme: dark;
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 280px; background: var(--bg); }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 4% -10%, rgb(123 94 167 / 16%), transparent 32rem),
+        radial-gradient(circle at 95% 0%, rgb(74 144 217 / 13%), transparent 30rem),
+        var(--bg);
+      background-attachment: fixed;
+    }
+
+    button, input, textarea { font: inherit; }
+    button { color: inherit; }
+    :focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+
+    .shell { width: min(1240px, calc(100% - 40px)); margin: 0 auto; padding: 42px 0 72px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 34px; }
+    .brand { display: flex; align-items: center; gap: 13px; }
+    .brand-mark {
+      display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid rgb(255 255 255 / 14%);
+      border-radius: 14px; background: linear-gradient(135deg, #8d69bd, #438bd8); box-shadow: 0 12px 30px rgb(70 91 180 / 28%);
+    }
+    .brand-mark svg { width: 21px; }
+    h1, h2, h3 { margin: 0; font-family: Outfit, Inter, sans-serif; }
+    h1 { font-size: clamp(1.35rem, 3vw, 1.8rem); letter-spacing: -.025em; }
+    .eyebrow { margin: 3px 0 0; color: var(--subtle); font-size: .68rem; letter-spacing: .15em; text-transform: uppercase; }
+    .top-actions { display: flex; align-items: center; gap: 10px; }
+    .count-pill, .button {
+      min-height: 38px; border: 1px solid var(--border); border-radius: 11px; background: rgb(255 255 255 / 3%);
+    }
+    .count-pill { display: flex; align-items: center; gap: 6px; padding: 0 13px; color: var(--muted); font-size: .76rem; white-space: nowrap; }
+    .count-pill strong { color: var(--text); font-variant-numeric: tabular-nums; }
+    .button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 14px; cursor: pointer; transition: 180ms ease; }
+    .button:hover { border-color: var(--border-bright); background: rgb(255 255 255 / 7%); transform: translateY(-1px); }
+    .button svg { width: 15px; }
+    .button-primary { border-color: transparent; background: linear-gradient(125deg, #7657a5, #3f86d1); box-shadow: 0 10px 25px rgb(63 108 190 / 20%); }
+    .button-danger { color: #ffb1b1; }
+
+    .controls {
+      position: sticky; z-index: 10; top: 14px; display: grid; grid-template-columns: minmax(220px, 1fr) auto; gap: 14px;
+      margin-bottom: 30px; padding: 14px; border: 1px solid var(--border); border-radius: 17px;
+      background: rgb(14 14 22 / 76%); box-shadow: 0 14px 45px rgb(0 0 0 / 20%); backdrop-filter: blur(18px);
+    }
+    .search { position: relative; }
+    .search svg { position: absolute; top: 50%; left: 14px; width: 17px; color: var(--subtle); transform: translateY(-50%); pointer-events: none; }
+    .search input, .field input, .field textarea {
+      width: 100%; border: 1px solid var(--border); color: var(--text); background: rgb(5 5 9 / 45%); outline: none; transition: 180ms ease;
+    }
+    .search input { height: 44px; padding: 0 14px 0 42px; border-radius: 12px; }
+    .search input:focus, .field input:focus, .field textarea:focus { border-color: rgb(93 166 237 / 50%); box-shadow: 0 0 0 3px rgb(93 166 237 / 10%); }
+    .filters { display: flex; max-width: 570px; gap: 7px; overflow-x: auto; scrollbar-width: none; }
+    .filters::-webkit-scrollbar { display: none; }
+    .filter {
+      flex: 0 0 auto; border: 1px solid var(--border); border-radius: 11px; padding: 0 13px; color: var(--muted);
+      background: rgb(255 255 255 / 2%); cursor: pointer; font-size: .75rem; transition: 160ms ease;
+    }
+    .filter:hover { color: var(--text); background: rgb(255 255 255 / 5%); }
+    .filter.active { border-color: rgb(111 168 231 / 25%); color: white; background: linear-gradient(125deg, rgb(123 94 167 / 55%), rgb(74 144 217 / 55%)); }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 310px), 1fr)); gap: 22px; }
+    .card {
+      overflow: hidden; border: 1px solid var(--border); border-radius: 19px; background: var(--surface); box-shadow: var(--shadow);
+      cursor: pointer; transition: transform 260ms cubic-bezier(.2,.8,.2,1), border-color 260ms, background 260ms;
+      animation: card-enter 420ms both;
+    }
+    .card:hover { border-color: var(--border-bright); background: rgb(26 26 39 / 92%); transform: translateY(-5px); }
+    .media { position: relative; aspect-ratio: 16 / 9; overflow: hidden; background: linear-gradient(145deg, #151521, #0d0d14); }
+    .media img { width: 100%; height: 100%; object-fit: cover; transition: transform 600ms cubic-bezier(.2,.8,.2,1); }
+    .card:hover .media img { transform: scale(1.045); }
+    .media-fallback { display: grid; width: 100%; height: 100%; place-items: center; color: var(--subtle); font-size: .76rem; }
+    .card-content { padding: 17px; }
+    .card-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+    .badge { overflow: hidden; max-width: calc(100% - 35px); padding: 5px 9px; border-radius: 8px; color: #c5b1ea; background: rgb(156 123 209 / 13%); font-size: .64rem; font-weight: 600; letter-spacing: .08em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+    .delete { display: grid; width: 29px; height: 29px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 8px; color: var(--subtle); background: transparent; cursor: pointer; transition: 160ms; }
+    .delete:hover { color: var(--red); background: rgb(239 119 119 / 10%); }
+    .delete svg { width: 14px; }
+    .card h2 { display: -webkit-box; overflow: hidden; margin-bottom: 8px; font-size: 1.05rem; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+    .summary { display: -webkit-box; overflow: hidden; margin: 0; color: var(--muted); font-size: .78rem; line-height: 1.55; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+    .intent { margin: 12px 0 0; padding: 9px 10px; border-left: 2px solid var(--blue); border-radius: 0 8px 8px 0; color: #aaaac0; background: rgb(255 255 255 / 2%); font-size: .72rem; font-style: italic; }
+    .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 14px; }
+    .tag { padding: 4px 7px; border: 1px solid rgb(255 255 255 / 4%); border-radius: 6px; color: var(--subtle); background: rgb(255 255 255 / 3%); font-size: .64rem; }
+
+    .empty { grid-column: 1 / -1; padding: 80px 24px; border: 1px dashed var(--border-bright); border-radius: 19px; color: var(--muted); text-align: center; background: rgb(255 255 255 / 1.5%); }
+    .empty svg { width: 34px; margin-bottom: 12px; color: var(--subtle); }
+    .empty h2 { margin-bottom: 5px; color: var(--text); font-size: 1rem; }
+    .empty p { margin: 0; font-size: .78rem; }
+
+    dialog { width: min(920px, calc(100% - 32px)); max-height: min(88vh, 760px); padding: 0; border: 1px solid var(--border-bright); border-radius: 21px; color: var(--text); background: rgb(17 17 26 / 96%); box-shadow: 0 30px 90px rgb(0 0 0 / 70%); }
+    dialog::backdrop { background: rgb(4 4 8 / 80%); backdrop-filter: blur(12px); }
+    dialog[open] { animation: dialog-enter 240ms cubic-bezier(.2,.8,.2,1); }
+    .dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 19px 21px; border-bottom: 1px solid var(--border); }
+    .dialog-head h2 { font-size: 1.1rem; }
+    .dialog-close { display: grid; width: 32px; height: 32px; place-items: center; border: 0; border-radius: 9px; color: var(--muted); background: rgb(255 255 255 / 4%); cursor: pointer; }
+    .detail-body { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr); gap: 22px; padding: 22px; overflow: auto; }
+    .detail-image { overflow: hidden; align-self: start; border: 1px solid var(--border); border-radius: 14px; background: #08080c; }
+    .detail-image img { display: block; width: 100%; }
+    .detail-copy { display: flex; min-width: 0; flex-direction: column; gap: 18px; }
+    .detail-section h3 { margin-bottom: 6px; color: var(--subtle); font-family: Inter, sans-serif; font-size: .64rem; letter-spacing: .12em; text-transform: uppercase; }
+    .detail-section p { margin: 0; color: #c7c7d3; font-size: .82rem; line-height: 1.6; overflow-wrap: anywhere; }
+    .detail-copy .button { margin-top: auto; text-decoration: none; }
+
+    .settings-dialog { width: min(690px, calc(100% - 32px)); }
+    .settings-form { display: grid; gap: 22px; padding: 22px; overflow: auto; }
+    .settings-section { display: grid; gap: 13px; }
+    .settings-section + .settings-section { padding-top: 20px; border-top: 1px solid var(--border); }
+    .section-title { display: flex; align-items: baseline; justify-content: space-between; gap: 15px; }
+    .section-title h3 { font-size: .9rem; }
+    .section-title span { color: var(--subtle); font-size: .68rem; }
+    .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+    .field { display: grid; gap: 6px; }
+    .field.full { grid-column: 1 / -1; }
+    .field label { color: var(--muted); font-size: .7rem; font-weight: 500; }
+    .field input, .field textarea { border-radius: 10px; padding: 10px 11px; font-size: .78rem; }
+    .field textarea { min-height: 110px; resize: vertical; line-height: 1.5; }
+    .hint { margin: 0; color: var(--subtle); font-size: .65rem; line-height: 1.5; }
+    .form-error { display: none; padding: 10px 12px; border: 1px solid rgb(239 119 119 / 18%); border-radius: 9px; color: #ffaaaa; background: rgb(239 119 119 / 8%); font-size: .72rem; }
+    .form-error.visible { display: block; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 9px; padding: 0 22px 22px; }
+
+    .toast { position: fixed; z-index: 100; right: 22px; bottom: 22px; max-width: min(360px, calc(100% - 44px)); padding: 12px 15px; border: 1px solid var(--border-bright); border-radius: 11px; color: var(--text); background: var(--surface-solid); box-shadow: var(--shadow); font-size: .76rem; opacity: 0; pointer-events: none; transform: translateY(8px); transition: 200ms; }
+    .toast.visible { opacity: 1; transform: translateY(0); }
+    .toast.error { color: #ffb0b0; }
+
+    @keyframes card-enter { from { opacity: 0; transform: translateY(9px); } }
+    @keyframes dialog-enter { from { opacity: 0; transform: translateY(8px) scale(.985); } }
+    @media (max-width: 760px) {
+      .shell { width: min(100% - 24px, 1240px); padding-top: 24px; }
+      .topbar { align-items: flex-start; margin-bottom: 22px; }
+      .count-pill { display: none; }
+      .controls { position: static; grid-template-columns: 1fr; }
+      .filters { max-width: none; min-height: 38px; }
+      .detail-body { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 480px) {
+      .shell { width: min(100% - 18px, 1240px); }
+      .topbar { gap: 10px; }
+      .brand-mark { width: 37px; height: 37px; border-radius: 12px; }
+      .eyebrow { display: none; }
+      .button-label { display: none; }
+      .field-grid { grid-template-columns: 1fr; }
+      .field.full { grid-column: auto; }
+      .detail-body, .settings-form { padding: 16px; }
+      .dialog-actions { padding: 0 16px 16px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 17.5h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.2 8.4 4.6 4.6 0 0 0 7 17.5Z"/><path d="m9.5 12 2.5-2.5 2.5 2.5M12 9.8v5"/></svg>
+        </div>
+        <div><h1>Your archive</h1><p class="eyebrow">Instagram capture library</p></div>
+      </div>
+      <div class="top-actions">
+        <div class="count-pill"><strong id="filtered-count">0</strong><span id="count-label">items</span></div>
+        <button class="button" id="settings-button" type="button" aria-label="Open settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l-2.83 2.83A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1.4 1.6h-4A1.7 1.7 0 0 0 8.55 19.4a1.7 1.7 0 0 0-1.88.34l-2.83-2.83A1.7 1.7 0 0 0 4.2 15a1.7 1.7 0 0 0-1.6-1.4v-4A1.7 1.7 0 0 0 4.2 8.55a1.7 1.7 0 0 0-.34-1.88l2.83-2.83A1.7 1.7 0 0 0 8.55 4.2 1.7 1.7 0 0 0 9.6 2.6h4A1.7 1.7 0 0 0 15 4.2a1.7 1.7 0 0 0 1.88-.34l2.83 2.83A1.7 1.7 0 0 0 19.4 8.55a1.7 1.7 0 0 0 1.6 1.4v4a1.7 1.7 0 0 0-1.6 1.05Z"/></svg>
+          <span class="button-label">Settings</span>
+        </button>
+      </div>
+    </header>
+
+    <section class="controls" aria-label="Archive filters">
+      <label class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+        <input id="search" type="search" autocomplete="off" placeholder="Search titles, summaries, notes, and keywords…">
+      </label>
+      <div class="filters" id="filters" role="group" aria-label="Filter by category"></div>
+    </section>
+
+    <section class="grid" id="grid" aria-live="polite"></section>
+  </main>
+
+  <dialog id="detail-dialog" aria-labelledby="detail-title">
+    <div class="dialog-head"><h2 id="detail-title">Archive details</h2><button class="dialog-close" type="button" data-close="detail-dialog" aria-label="Close">×</button></div>
+    <div class="detail-body">
+      <div class="detail-image" id="detail-image"></div>
+      <div class="detail-copy">
+        <div class="detail-section"><h3>Category</h3><p id="detail-category"></p></div>
+        <div class="detail-section" id="detail-intent-wrap"><h3>Saved with</h3><p id="detail-intent"></p></div>
+        <div class="detail-section"><h3>AI summary</h3><p id="detail-summary"></p></div>
+        <div class="detail-section" id="detail-description-wrap"><h3>Page description</h3><p id="detail-description"></p></div>
+        <div class="detail-section"><h3>Keywords</h3><div class="tags" id="detail-tags"></div></div>
+        <a class="button button-primary" id="detail-link" target="_blank" rel="noreferrer">Open original post</a>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="settings-dialog" id="settings-dialog" aria-labelledby="settings-title">
+    <div class="dialog-head"><div><h2 id="settings-title">Archive settings</h2><p class="eyebrow">Applied to the next capture</p></div><button class="dialog-close" type="button" data-close="settings-dialog" aria-label="Close">×</button></div>
+    <form id="settings-form">
+      <div class="settings-form">
+        <section class="settings-section">
+          <div class="section-title"><h3>Capture engine</h3><span>Performance and image size</span></div>
+          <div class="field-grid">
+            <div class="field"><label for="concurrency">Parallel captures</label><input id="concurrency" name="concurrency" type="number" min="1" max="8" required></div>
+            <div class="field"><label for="timeout">Timeout in seconds</label><input id="timeout" name="timeout" type="number" min="5" max="120" required></div>
+            <div class="field"><label for="viewport-width">Screenshot width</label><input id="viewport-width" name="viewportW" type="number" min="320" max="3840" required></div>
+            <div class="field"><label for="viewport-height">Screenshot height</label><input id="viewport-height" name="viewportH" type="number" min="320" max="2160" required></div>
+          </div>
+        </section>
+        <section class="settings-section">
+          <div class="section-title"><h3>AI provider</h3><span id="api-key-status">API key not configured</span></div>
+          <div class="field-grid">
+            <div class="field"><label for="openai-model">Model</label><input id="openai-model" name="openaiModel" type="text" maxlength="100" required placeholder="gpt-4o"></div>
+            <div class="field"><label for="openai-key">API key</label><input id="openai-key" name="openaiApiKey" type="password" maxlength="500" autocomplete="new-password" placeholder="Leave blank to keep current"></div>
+            <div class="field full"><label for="openai-base-url">Compatible API base URL</label><input id="openai-base-url" name="openaiBaseUrl" type="url" placeholder="Default OpenAI endpoint"></div>
+          </div>
+          <p class="hint">The API key is write-only in this dashboard. A custom base URL may point to an OpenAI-compatible provider.</p>
+        </section>
+        <section class="settings-section">
+          <div class="section-title"><h3>Categories</h3><span>One category per line</span></div>
+          <div class="field"><label for="categories">Available AI categories</label><textarea id="categories" name="categories" required></textarea></div>
+        </section>
+        <div class="form-error" id="settings-error" role="alert"></div>
+      </div>
+      <div class="dialog-actions"><button class="button" id="clear-key" type="button">Use environment key</button><button class="button" type="button" data-close="settings-dialog">Cancel</button><button class="button button-primary" type="submit">Save settings</button></div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const state = { entries: [], config: null, category: 'All', query: '' };
+    const grid = document.querySelector('#grid');
+    const filters = document.querySelector('#filters');
+    const count = document.querySelector('#filtered-count');
+    const countLabel = document.querySelector('#count-label');
+    const detailDialog = document.querySelector('#detail-dialog');
+    const settingsDialog = document.querySelector('#settings-dialog');
+    let toastTimer;
+
+    function icon(name) {
+      const paths = {
+        archive: ['M4 7h16v13H4zM3 4h18v3H3zM9 11h6'],
+        trash: ['M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5m4-5v5'],
+      };
+      const wrapper = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      wrapper.setAttribute('viewBox', '0 0 24 24');
+      wrapper.setAttribute('fill', 'none');
+      wrapper.setAttribute('stroke', 'currentColor');
+      wrapper.setAttribute('stroke-width', '1.8');
+      paths[name].forEach(value => {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', value);
+        wrapper.append(path);
+      });
+      return wrapper;
+    }
+
+    function showToast(message, isError = false) {
+      const toast = document.querySelector('#toast');
+      toast.textContent = message;
+      toast.className = `toast visible${isError ? ' error' : ''}`;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { toast.className = 'toast'; }, 3200);
+    }
+
+    async function api(path, options) {
+      const response = await fetch(path, options);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `Request failed with status ${response.status}.`);
+      return payload;
+    }
+
+    function categoryNames(value) {
+      return typeof value === 'string' ? value.split(',').map(item => item.trim()).filter(Boolean) : [];
+    }
+
+    function keywords(value) {
+      return typeof value === 'string' ? value.split(',').map(item => item.trim()).filter(Boolean) : [];
+    }
+
+    function appendTags(container, values) {
+      container.replaceChildren(...values.map(value => {
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = value;
+        return tag;
+      }));
+    }
+
+    function screenshotUrl(entry) {
+      return typeof entry.screenshotPath === 'string' && /^screenshots\/[a-f0-9]{12}\.png$/i.test(entry.screenshotPath)
+        ? `/${entry.screenshotPath}`
+        : '';
+    }
+
+    function makeImage(entry) {
+      const container = document.createElement('div');
+      const url = screenshotUrl(entry);
+      if (!url) {
+        const fallback = document.createElement('div');
+        fallback.className = 'media-fallback';
+        fallback.textContent = 'Screenshot unavailable';
+        container.append(fallback);
+        return container;
+      }
+      const image = document.createElement('img');
+      image.src = url;
+      image.alt = entry.title ? `Screenshot of ${entry.title}` : 'Archived post screenshot';
+      image.loading = 'lazy';
+      image.addEventListener('error', () => {
+        const fallback = document.createElement('div');
+        fallback.className = 'media-fallback';
+        fallback.textContent = 'Screenshot unavailable';
+        container.replaceChildren(fallback);
+      });
+      container.append(image);
+      return container;
+    }
+
+    function filteredEntries() {
+      return state.entries.filter(entry => {
+        const matchesCategory = state.category === 'All' || categoryNames(entry.category).includes(state.category);
+        const haystack = [entry.title, entry.summary, entry.metaDescription, entry.userMessage, entry.keywords]
+          .filter(value => typeof value === 'string').join(' ').toLocaleLowerCase();
+        return matchesCategory && (!state.query || haystack.includes(state.query));
+      });
+    }
+
+    function renderFilters() {
+      const available = new Set(state.config?.categories || []);
+      state.entries.forEach(entry => categoryNames(entry.category).forEach(category => available.add(category)));
+      const names = ['All', ...Array.from(available).sort((a, b) => a.localeCompare(b))];
+      if (!names.includes(state.category)) state.category = 'All';
+      filters.replaceChildren(...names.map(name => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `filter${state.category === name ? ' active' : ''}`;
+        button.textContent = name === 'All' ? 'All captures' : name;
+        button.setAttribute('aria-pressed', String(state.category === name));
+        button.addEventListener('click', () => { state.category = name; renderFilters(); renderGrid(); });
+        return button;
+      }));
+    }
+
+    function renderEmpty(title, message) {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.append(icon('archive'));
+      const heading = document.createElement('h2');
+      heading.textContent = title;
+      const copy = document.createElement('p');
+      copy.textContent = message;
+      empty.append(heading, copy);
+      grid.replaceChildren(empty);
+    }
+
+    function renderGrid() {
+      const entries = filteredEntries();
+      count.textContent = String(entries.length);
+      countLabel.textContent = entries.length === state.entries.length ? (entries.length === 1 ? 'item' : 'items') : `of ${state.entries.length}`;
+      if (!entries.length) {
+        renderEmpty(state.entries.length ? 'No matching captures' : 'Your archive is ready', state.entries.length ? 'Try another search or category.' : 'Captured Instagram posts will appear here.');
+        return;
+      }
+      grid.replaceChildren(...entries.map((entry, index) => {
+        const card = document.createElement('article');
+        card.className = 'card';
+        card.tabIndex = 0;
+        card.style.animationDelay = `${Math.min(index * 35, 280)}ms`;
+        card.addEventListener('click', () => openDetail(entry));
+        card.addEventListener('keydown', event => {
+          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openDetail(entry); }
+        });
+
+        const media = makeImage(entry);
+        media.className = 'media';
+        const content = document.createElement('div');
+        content.className = 'card-content';
+        const row = document.createElement('div');
+        row.className = 'card-row';
+        const badge = document.createElement('span');
+        badge.className = 'badge';
+        badge.textContent = entry.category || 'Uncategorized';
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'delete';
+        remove.title = 'Delete capture';
+        remove.setAttribute('aria-label', `Delete ${entry.title || 'capture'}`);
+        remove.append(icon('trash'));
+        remove.addEventListener('click', event => { event.stopPropagation(); deleteEntry(entry); });
+        row.append(badge, remove);
+
+        const title = document.createElement('h2');
+        title.textContent = entry.title || 'Untitled capture';
+        const summary = document.createElement('p');
+        summary.className = 'summary';
+        summary.textContent = entry.summary || 'No summary available.';
+        content.append(row, title, summary);
+        if (entry.userMessage) {
+          const intent = document.createElement('p');
+          intent.className = 'intent';
+          intent.textContent = `“${entry.userMessage}”`;
+          content.append(intent);
+        }
+        const tagList = document.createElement('div');
+        tagList.className = 'tags';
+        appendTags(tagList, keywords(entry.keywords));
+        content.append(tagList);
+        card.append(media, content);
+        return card;
+      }));
+    }
+
+    function openDetail(entry) {
+      document.querySelector('#detail-title').textContent = entry.title || 'Archive details';
+      document.querySelector('#detail-category').textContent = entry.category || 'Uncategorized';
+      document.querySelector('#detail-summary').textContent = entry.summary || 'No summary available.';
+      const intentWrap = document.querySelector('#detail-intent-wrap');
+      intentWrap.hidden = !entry.userMessage;
+      document.querySelector('#detail-intent').textContent = entry.userMessage || '';
+      const descriptionWrap = document.querySelector('#detail-description-wrap');
+      descriptionWrap.hidden = !entry.metaDescription;
+      document.querySelector('#detail-description').textContent = entry.metaDescription || '';
+      appendTags(document.querySelector('#detail-tags'), keywords(entry.keywords));
+      const image = makeImage(entry);
+      document.querySelector('#detail-image').replaceChildren(...image.childNodes);
+      const link = document.querySelector('#detail-link');
+      try {
+        const parsed = new URL(entry.url);
+        if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error();
+        link.href = parsed.href;
+        link.hidden = false;
+      } catch { link.hidden = true; }
+      detailDialog.showModal();
+    }
+
+    async function deleteEntry(entry) {
+      if (!confirm(`Delete “${entry.title || 'this capture'}”? This also removes its screenshot.`)) return;
+      try {
+        await api('/api/archive', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: entry.url }) });
+        state.entries = state.entries.filter(item => item.url !== entry.url);
+        renderFilters();
+        renderGrid();
+        showToast('Capture deleted.');
+      } catch (err) { showToast(err.message, true); }
+    }
+
+    function fillSettings() {
+      const config = state.config;
+      if (!config) return;
+      document.querySelector('#concurrency').value = config.concurrency;
+      document.querySelector('#timeout').value = config.timeoutMs / 1000;
+      document.querySelector('#viewport-width').value = config.viewportW;
+      document.querySelector('#viewport-height').value = config.viewportH;
+      document.querySelector('#openai-model').value = config.openaiModel;
+      document.querySelector('#openai-base-url').value = config.openaiBaseUrl || '';
+      document.querySelector('#openai-key').value = '';
+      document.querySelector('#categories').value = config.categories.join('\n');
+      document.querySelector('#api-key-status').textContent = config.hasOpenaiApiKey ? 'API key configured' : 'API key not configured';
+      document.querySelector('#settings-error').className = 'form-error';
+    }
+
+    async function saveSettings(event) {
+      event.preventDefault();
+      const apiKey = document.querySelector('#openai-key').value;
+      const payload = {
+        concurrency: Number(document.querySelector('#concurrency').value),
+        timeoutMs: Number(document.querySelector('#timeout').value) * 1000,
+        viewportW: Number(document.querySelector('#viewport-width').value),
+        viewportH: Number(document.querySelector('#viewport-height').value),
+        openaiModel: document.querySelector('#openai-model').value,
+        openaiBaseUrl: document.querySelector('#openai-base-url').value,
+        categories: document.querySelector('#categories').value.split('\n').map(value => value.trim()).filter(Boolean),
+      };
+      if (apiKey) payload.openaiApiKey = apiKey;
+      try {
+        const result = await api('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        state.config = result.config;
+        settingsDialog.close();
+        renderFilters();
+        showToast('Settings saved.');
+      } catch (err) {
+        const error = document.querySelector('#settings-error');
+        error.textContent = err.message;
+        error.className = 'form-error visible';
+      }
+    }
+
+    async function clearApiKey() {
+      try {
+        const result = await api('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ openaiApiKey: '' }) });
+        state.config = result.config;
+        fillSettings();
+        showToast('Saved API key cleared; environment key will be used.');
+      } catch (err) { showToast(err.message, true); }
+    }
+
+    async function load() {
+      renderEmpty('Loading your archive…', 'Fetching saved captures from the local server.');
+      try {
+        const [entries, config] = await Promise.all([api('/api/archive'), api('/api/config')]);
+        state.entries = Array.isArray(entries) ? entries.sort((a, b) => new Date(b.archivedAt || 0) - new Date(a.archivedAt || 0)) : [];
+        state.config = config;
+        renderFilters();
+        renderGrid();
+      } catch (err) { renderEmpty('Could not load the archive', err.message); }
+    }
+
+    document.querySelector('#search').addEventListener('input', event => { state.query = event.target.value.trim().toLocaleLowerCase(); renderGrid(); });
+    document.querySelector('#settings-button').addEventListener('click', () => { fillSettings(); settingsDialog.showModal(); });
+    document.querySelector('#settings-form').addEventListener('submit', saveSettings);
+    document.querySelector('#clear-key').addEventListener('click', clearApiKey);
+    document.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => document.querySelector(`#${button.dataset.close}`).close()));
+    [detailDialog, settingsDialog].forEach(dialog => dialog.addEventListener('click', event => {
+      const bounds = dialog.getBoundingClientRect();
+      if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close();
+    }));
+    load();
+  </script>
+</body>
+</html>

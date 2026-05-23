@@ -4,6 +4,7 @@ import express from 'express';
 import cors from 'cors';
 import { chromium } from 'playwright';
 import { promises as fs } from 'fs';
+import path from 'path';
 
 import { readDb, writeDb } from './lib/db.js';
 import { capturePageInfo } from './lib/capture.js';
@@ -15,7 +16,15 @@ import { PORT, SCREENSHOTS, SESSION_FILE, getConfig, getPublicConfig, setConfig 
 
 const app = express();
 
-app.use(cors({ origin: '*' }));
+app.use(cors({
+  origin(origin, callback) {
+    const allowed = !origin
+      || origin.startsWith('chrome-extension://')
+      || origin === `http://localhost:${PORT}`
+      || origin === `http://127.0.0.1:${PORT}`;
+    callback(allowed ? null : new Error('Origin is not allowed.'), allowed);
+  },
+}));
 app.use(express.json({ limit: '1mb' }));
 
 // health check
@@ -23,6 +32,59 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
 // serve screenshots statically so the UI can preview them
 app.use('/screenshots', express.static(SCREENSHOTS));
+app.use(express.static(path.join(path.dirname(SCREENSHOTS), 'public')));
+
+// API: get all archived entries
+app.get('/api/archive', async (req, res) => {
+  try {
+    const db = await readDb();
+    res.json(db);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to read database.' });
+  }
+});
+
+// API: delete an entry from archive
+app.delete('/api/archive', async (req, res) => {
+  const { url } = req.body;
+  if (!url) {
+    return res.status(400).json({ error: 'Missing "url" parameter.' });
+  }
+  try {
+    const db = await readDb();
+    const entry = db.find(e => e.url === url);
+    if (!entry) {
+      return res.status(404).json({ error: 'Entry not found.' });
+    }
+    const filtered = db.filter(e => e.url !== url);
+    await writeDb(filtered);
+    if (entry.screenshotPath) {
+      const screenshotFile = path.join(SCREENSHOTS, path.basename(entry.screenshotPath));
+      await fs.unlink(screenshotFile).catch(err => {
+        if (err.code !== 'ENOENT') console.warn(`[ig-archiver] Could not delete screenshot: ${err.message}`);
+      });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update database.' });
+  }
+});
+
+// API: get current configuration settings
+app.get('/api/config', (req, res) => {
+  res.json(getPublicConfig());
+});
+
+// API: update configuration settings
+app.post('/api/config', (req, res) => {
+  try {
+    const config = setConfig(req.body);
+    res.json({ success: true, config });
+  } catch (err) {
+    const status = err instanceof TypeError ? 400 : 500;
+    res.status(status).json({ error: err.message || 'Failed to save configuration.' });
+  }
+});
 
 /**
  * post /archive
@@ -111,6 +173,15 @@ app.post('/archive', async (req, res) => {
     await writeDb(db).catch(err => console.error(`[ig-archiver] Database write failed: ${err.message}`));
     res.end();
   }
+});
+
+app.use((err, _req, res, next) => {
+  if (res.headersSent) return next(err);
+  if (err.message === 'Origin is not allowed.') {
+    return res.status(403).json({ error: err.message });
+  }
+  console.error('[ig-archiver] Unhandled request error:', err);
+  res.status(500).json({ error: 'Unexpected server error.' });
 });
 
 // ── start ─────────────────────────────────────────────────────────────────────
