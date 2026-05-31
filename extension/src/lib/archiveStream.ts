@@ -1,12 +1,13 @@
 import type { ArchiveEvent } from '../types';
-
-const SERVER_URL = 'http://localhost:3000';
+import { getServerUrl } from './config';
 
 export async function* archiveStream(
   urls: string[],
   urlMessages: Record<string, string> = {},
+  serverUrl?: string,
 ): AsyncGenerator<ArchiveEvent> {
-  const res = await fetch(`${SERVER_URL}/archive`, {
+  const endpoint = serverUrl || await getServerUrl();
+  const res = await fetch(`${endpoint}/archive`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ urls, urlMessages }),
@@ -17,7 +18,8 @@ export async function* archiveStream(
     throw new Error(`Server error ${res.status}: ${text}`);
   }
 
-  const reader = res.body!.getReader();
+  if (!res.body) throw new Error('Server returned an empty response stream.');
+  const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
 

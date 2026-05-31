@@ -1,1 +1,149 @@
 @import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  font-family: Inter, "Avenir Next", "Segoe UI Variable Text", system-ui, sans-serif;
+  font-synthesis: none;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-width: 360px;
+  min-height: 256px;
+  background: #09090e;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.display-type {
+  font-family: "Avenir Next", "Segoe UI Variable Display", Inter, system-ui, sans-serif;
+}
+
+.popup-shell {
+  position: relative;
+  isolation: isolate;
+  background:
+    linear-gradient(145deg, rgb(23 22 35 / 96%), rgb(9 9 14 / 98%)),
+    radial-gradient(circle at 20% 0%, rgb(123 94 167 / 24%), transparent 44%);
+  animation: popup-enter 420ms cubic-bezier(.2, .8, .2, 1) both;
+}
+
+.popup-shell::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(115deg, rgb(255 255 255 / 5%), transparent 32%);
+  content: "";
+  pointer-events: none;
+}
+
+.ambient-orb {
+  position: absolute;
+  z-index: -1;
+  top: -80px;
+  right: -55px;
+  width: 170px;
+  height: 170px;
+  border-radius: 999px;
+  background: rgb(74 144 217 / 17%);
+  filter: blur(35px);
+  animation: orb-drift 7s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+.brand-mark {
+  color: #fff;
+  background: linear-gradient(135deg, #8b68bd, #4389d5);
+  box-shadow: 0 8px 24px rgb(74 109 190 / 25%), inset 0 1px rgb(255 255 255 / 22%);
+}
+
+.icon-button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 7%);
+  border-radius: 9px;
+  color: #77778c;
+  background: rgb(255 255 255 / 3%);
+  transition: 180ms ease;
+}
+
+.icon-button:hover,
+.icon-button.active {
+  border-color: rgb(111 168 231 / 25%);
+  color: #c3d9f2;
+  background: rgb(111 168 231 / 10%);
+}
+
+.settings-panel {
+  padding: 12px;
+  border: 1px solid rgb(255 255 255 / 7%);
+  border-radius: 12px;
+  background: rgb(4 4 8 / 28%);
+  box-shadow: inset 0 1px rgb(255 255 255 / 2%);
+  animation: panel-reveal 220ms ease-out both;
+}
+
+.scan-button {
+  background: linear-gradient(125deg, #7555a4, #397fca);
+  box-shadow: 0 10px 24px rgb(50 94 164 / 22%), inset 0 1px rgb(255 255 255 / 20%);
+  transition: transform 180ms ease, opacity 180ms ease, box-shadow 180ms ease;
+}
+
+.scan-button::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 30%, rgb(255 255 255 / 17%) 48%, transparent 65%);
+  content: "";
+  transform: translateX(-120%);
+  transition: transform 550ms ease;
+}
+
+.scan-button:hover::after {
+  transform: translateX(120%);
+}
+
+.scan-button:hover:not(:disabled) {
+  box-shadow: 0 13px 30px rgb(50 94 164 / 34%), inset 0 1px rgb(255 255 255 / 20%);
+}
+
+.status-entry {
+  animation: status-enter 220ms ease-out both;
+}
+
+@keyframes popup-enter {
+  from { opacity: 0; transform: translateY(5px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes panel-reveal {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes status-enter {
+  from { opacity: 0; transform: translateX(-4px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes orb-drift {
+  to { transform: translate(-22px, 16px) scale(1.08); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

@@ -4,7 +4,12 @@
   "version": "0.0.1",
   "description": "Scrape external links from Instagram DMs and archive them with AI summaries and screenshots.",
   "permissions": ["activeTab", "scripting", "storage"],
-  "host_permissions": ["*://www.instagram.com/*"],
+  "host_permissions": [
+    "*://www.instagram.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
   "content_scripts": [
     {
       "matches": ["*://www.instagram.com/*"],

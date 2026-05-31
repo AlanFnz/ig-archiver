@@ -11,6 +11,8 @@ export interface ScanState {
   phase: ScanPhase;
   processed: number;
   total: number;
+  succeeded: number;
+  failed: number;
   statusFeed: StatusEntry[];
 }
 

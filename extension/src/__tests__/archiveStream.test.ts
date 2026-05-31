@@ -107,6 +107,24 @@ describe('archiveStream', () => {
     expect(body.urlMessages).toEqual(urlMessages)
   })
 
+  it('uses an explicitly configured server URL', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, body: makeStream([]) })
+    vi.stubGlobal('fetch', mockFetch)
+
+    for await (const _ of archiveStream(['https://www.instagram.com/p/abc/'], {}, 'https://archive.example.test')) { /* drain */ }
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://archive.example.test/archive',
+      expect.any(Object),
+    )
+  })
+
+  it('rejects a successful response without a body', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: null }))
+    const stream = archiveStream(['https://www.instagram.com/p/abc/'], {}, 'http://localhost:3000')
+    await expect(stream.next()).rejects.toThrow('empty response stream')
+  })
+
   it('sends an empty urlMessages object when the argument is omitted', async () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, body: makeStream([]) })
     vi.stubGlobal('fetch', mockFetch)
