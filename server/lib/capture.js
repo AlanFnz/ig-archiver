@@ -4,6 +4,14 @@ import path from 'path';
 import { SCREENSHOTS, SESSION_FILE, getConfig } from './config.js';
 export { SCREENSHOTS };
 
+function instagramEmbedUrl(url) {
+  const parsed = new URL(url);
+  parsed.pathname = `${parsed.pathname.replace(/\/+$/, '')}/embed/`;
+  parsed.search = '';
+  parsed.hash = '';
+  return parsed.toString();
+}
+
 /**
  * visit a URL using an existing Playwright browser instance, capture a
  * screenshot, and extract the page title, meta description, and caption.
@@ -28,12 +36,13 @@ export async function capturePageInfo(browser, url) {
   try {
     // instagram keeps persistent connections so networkidle never fires;
     // 'load' waits for the window load event which is sufficient for screenshots.
+    let response;
     try {
-      await page.goto(url, { waitUntil: 'load', timeout: config.timeoutMs });
+      response = await page.goto(url, { waitUntil: 'load', timeout: config.timeoutMs });
     } catch (loadErr) {
       // fall back to domcontentloaded if load itself times out
       try {
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: config.timeoutMs });
+        response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: config.timeoutMs });
       } catch (fallbackErr) {
         throw new Error(
           `Navigation failed (load: ${loadErr.message}; domcontentloaded: ${fallbackErr.message})`
@@ -41,9 +50,43 @@ export async function capturePageInfo(browser, url) {
       }
     }
 
+    let status = response?.status();
+    if (status === 429) {
+      try {
+        response = await page.goto(instagramEmbedUrl(url), {
+          waitUntil: 'domcontentloaded',
+          timeout: config.timeoutMs,
+        });
+        status = response?.status();
+      } catch (embedErr) {
+        throw new Error(`Instagram embed fallback failed after HTTP 429: ${embedErr.message}`);
+      }
+      if (status === 429) {
+        throw new Error(
+          'Instagram rate-limited both the page and embed capture (HTTP 429). Wait before retrying and consider reducing capture concurrency.'
+        );
+      }
+    }
+    if (status && status >= 400) {
+      throw new Error(`Instagram returned HTTP ${status}; the page was not captured.`);
+    }
+
     const currentUrl = page.url();
     if (currentUrl.includes('instagram.com/accounts/login') || currentUrl.includes('/login/')) {
       throw new Error('Instagram session expired or invalid. Please re-authenticate by running `yarn run login`.');
+    }
+
+    try {
+      await page.waitForFunction(
+        () => Boolean(
+          document.body?.innerText.trim()
+          || document.querySelector('main, article, img, video, [role="main"]')
+        ),
+        null,
+        { timeout: Math.min(config.timeoutMs, 10_000) },
+      );
+    } catch {
+      throw new Error('Instagram returned a blank page; no screenshot was saved.');
     }
 
     const title = await page.title().catch(() => '');

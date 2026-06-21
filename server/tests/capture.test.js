@@ -27,6 +27,8 @@ function makeMockBrowser({
   metaDesc = 'Meta description',
   caption = 'Caption text',
   currentUrl = 'https://www.instagram.com/p/TestPost123/',
+  responseStatus = 200,
+  renderFails = false,
 } = {}) {
   let gotoCount = 0
   const page = {
@@ -34,11 +36,16 @@ function makeMockBrowser({
       gotoCount++
       if (failBothGotos) throw new Error(`${waitUntil} failed`)
       if (failFirstGoto && waitUntil === 'load') throw new Error('load timed out')
+      const statuses = Array.isArray(responseStatus) ? responseStatus : [responseStatus]
+      return { status: () => statuses[Math.min(gotoCount - 1, statuses.length - 1)] }
     }),
     url: vi.fn().mockReturnValue(currentUrl),
     title: vi.fn().mockResolvedValue(title),
     $eval: vi.fn().mockResolvedValue(metaDesc),
     evaluate: vi.fn().mockResolvedValue(caption),
+    waitForFunction: renderFails
+      ? vi.fn().mockRejectedValue(new Error('render timed out'))
+      : vi.fn().mockResolvedValue(undefined),
     screenshot: vi.fn().mockResolvedValue(undefined),
   }
   const context = {
@@ -115,5 +122,30 @@ describe('capturePageInfo', () => {
   it('throws an error if redirected to the login page', async () => {
     const { browser } = makeMockBrowser({ currentUrl: 'https://www.instagram.com/accounts/login/' })
     await expect(capturePageInfo(browser, url)).rejects.toThrow('Instagram session expired or invalid')
+  })
+
+  it('rejects rate-limited responses instead of saving a blank screenshot', async () => {
+    const { browser, page } = makeMockBrowser({ responseStatus: 429 })
+    await expect(capturePageInfo(browser, url)).rejects.toThrow('rate-limited')
+    expect(page.screenshot).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the Instagram embed view when the normal page is rate-limited', async () => {
+    const { browser, page } = makeMockBrowser({ responseStatus: [429, 200] })
+    await capturePageInfo(browser, url)
+
+    expect(page.goto).toHaveBeenCalledTimes(2)
+    expect(page.goto).toHaveBeenNthCalledWith(
+      2,
+      'https://www.instagram.com/p/TestPost123/embed/',
+      expect.objectContaining({ waitUntil: 'domcontentloaded' }),
+    )
+    expect(page.screenshot).toHaveBeenCalledOnce()
+  })
+
+  it('rejects pages that never render usable content', async () => {
+    const { browser, page } = makeMockBrowser({ renderFails: true })
+    await expect(capturePageInfo(browser, url)).rejects.toThrow('blank page')
+    expect(page.screenshot).not.toHaveBeenCalled()
   })
 })
