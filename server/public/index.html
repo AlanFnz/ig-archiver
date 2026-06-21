@@ -89,6 +89,13 @@
     .filter:hover { color: var(--text); background: rgb(255 255 255 / 5%); }
     .filter.active { border-color: rgb(111 168 231 / 25%); color: white; background: linear-gradient(125deg, rgb(123 94 167 / 55%), rgb(74 144 217 / 55%)); }
 
+    .bulk-bar { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: -14px 0 24px; padding: 11px 14px; border: 1px solid rgb(93 166 237 / 16%); border-radius: 13px; background: rgb(35 49 75 / 35%); }
+    .bulk-bar[hidden] { display: none; }
+    .bulk-summary { color: var(--muted); font-size: .75rem; }
+    .bulk-summary strong { color: var(--text); font-variant-numeric: tabular-nums; }
+    .bulk-actions { display: flex; gap: 8px; }
+    .button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 310px), 1fr)); gap: 22px; }
     .card {
       overflow: hidden; border: 1px solid var(--border); border-radius: 19px; background: var(--surface); box-shadow: var(--shadow);
@@ -96,6 +103,7 @@
       animation: card-enter 420ms both;
     }
     .card:hover { border-color: var(--border-bright); background: rgb(26 26 39 / 92%); transform: translateY(-5px); }
+    .card.selected { border-color: rgb(93 166 237 / 65%); box-shadow: 0 0 0 2px rgb(93 166 237 / 16%), var(--shadow); }
     .media { position: relative; aspect-ratio: 16 / 9; overflow: hidden; background: linear-gradient(145deg, #151521, #0d0d14); }
     .media img { width: 100%; height: 100%; object-fit: cover; transition: transform 600ms cubic-bezier(.2,.8,.2,1); }
     .card:hover .media img { transform: scale(1.045); }
@@ -106,6 +114,8 @@
     .delete { display: grid; width: 29px; height: 29px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 8px; color: var(--subtle); background: transparent; cursor: pointer; transition: 160ms; }
     .delete:hover { color: var(--red); background: rgb(239 119 119 / 10%); }
     .delete svg { width: 14px; }
+    .selection-check { position: absolute; z-index: 2; top: 12px; right: 12px; display: grid; width: 27px; height: 27px; place-items: center; border: 1px solid rgb(255 255 255 / 28%); border-radius: 9px; color: transparent; background: rgb(8 8 13 / 72%); box-shadow: 0 5px 16px rgb(0 0 0 / 28%); backdrop-filter: blur(8px); }
+    .card.selected .selection-check { border-color: transparent; color: white; background: linear-gradient(135deg, #7657a5, #3f86d1); }
     .card h2 { display: -webkit-box; overflow: hidden; margin-bottom: 8px; font-size: 1.05rem; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
     .summary { display: -webkit-box; overflow: hidden; margin: 0; color: var(--muted); font-size: .78rem; line-height: 1.55; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
     .intent { margin: 12px 0 0; padding: 9px 10px; border-left: 2px solid var(--blue); border-radius: 0 8px 8px 0; color: #aaaac0; background: rgb(255 255 255 / 2%); font-size: .72rem; font-style: italic; }
@@ -161,6 +171,9 @@
       .count-pill { display: none; }
       .controls { position: static; grid-template-columns: 1fr; }
       .filters { max-width: none; min-height: 38px; }
+      .bulk-bar { align-items: flex-start; flex-direction: column; margin-top: -14px; }
+      .bulk-actions { width: 100%; }
+      .bulk-actions .button { flex: 1; }
       .detail-body { grid-template-columns: 1fr; }
     }
     @media (max-width: 480px) {
@@ -190,6 +203,10 @@
       </div>
       <div class="top-actions">
         <div class="count-pill"><strong id="filtered-count">0</strong><span id="count-label">items</span></div>
+        <button class="button" id="select-button" type="button" aria-pressed="false" aria-label="Select captures">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="m14.5 17 2 2 4-5"/></svg>
+          <span class="button-label">Select</span>
+        </button>
         <button class="button" id="settings-button" type="button" aria-label="Open settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l-2.83 2.83A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1.4 1.6h-4A1.7 1.7 0 0 0 8.55 19.4a1.7 1.7 0 0 0-1.88.34l-2.83-2.83A1.7 1.7 0 0 0 4.2 15a1.7 1.7 0 0 0-1.6-1.4v-4A1.7 1.7 0 0 0 4.2 8.55a1.7 1.7 0 0 0-.34-1.88l2.83-2.83A1.7 1.7 0 0 0 8.55 4.2 1.7 1.7 0 0 0 9.6 2.6h4A1.7 1.7 0 0 0 15 4.2a1.7 1.7 0 0 0 1.88-.34l2.83 2.83A1.7 1.7 0 0 0 19.4 8.55a1.7 1.7 0 0 0 1.6 1.4v4a1.7 1.7 0 0 0-1.6 1.05Z"/></svg>
           <span class="button-label">Settings</span>
@@ -203,6 +220,15 @@
         <input id="search" type="search" autocomplete="off" placeholder="Search titles, summaries, notes, and keywords…">
       </label>
       <div class="filters" id="filters" role="group" aria-label="Filter by category"></div>
+    </section>
+
+    <section class="bulk-bar" id="bulk-bar" aria-label="Bulk actions" hidden>
+      <div class="bulk-summary"><strong id="selected-count">0</strong> selected</div>
+      <div class="bulk-actions">
+        <button class="button" id="select-visible" type="button">Select visible</button>
+        <button class="button button-danger" id="delete-selected" type="button" disabled>Delete selected</button>
+        <button class="button" id="cancel-selection" type="button">Cancel</button>
+      </div>
     </section>
 
     <section class="grid" id="grid" aria-live="polite"></section>
@@ -258,13 +284,15 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script>
-    const state = { entries: [], config: null, category: 'All', query: '' };
+    const state = { entries: [], config: null, category: 'All', query: '', selecting: false, selected: new Set() };
     const grid = document.querySelector('#grid');
     const filters = document.querySelector('#filters');
     const count = document.querySelector('#filtered-count');
     const countLabel = document.querySelector('#count-label');
     const detailDialog = document.querySelector('#detail-dialog');
     const settingsDialog = document.querySelector('#settings-dialog');
+    const selectButton = document.querySelector('#select-button');
+    const bulkBar = document.querySelector('#bulk-bar');
     let toastTimer;
 
     function icon(name) {
@@ -296,7 +324,11 @@
     async function api(path, options) {
       const response = await fetch(path, options);
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || `Request failed with status ${response.status}.`);
+      if (!response.ok) {
+        const error = new Error(payload.error || `Request failed with status ${response.status}.`);
+        error.status = response.status;
+        throw error;
+      }
       return payload;
     }
 
@@ -388,22 +420,33 @@
       const entries = filteredEntries();
       count.textContent = String(entries.length);
       countLabel.textContent = entries.length === state.entries.length ? (entries.length === 1 ? 'item' : 'items') : `of ${state.entries.length}`;
+      renderBulkActions();
       if (!entries.length) {
         renderEmpty(state.entries.length ? 'No matching captures' : 'Your archive is ready', state.entries.length ? 'Try another search or category.' : 'Captured Instagram posts will appear here.');
         return;
       }
       grid.replaceChildren(...entries.map((entry, index) => {
         const card = document.createElement('article');
-        card.className = 'card';
+        const isSelected = state.selected.has(entry.url);
+        card.className = `card${isSelected ? ' selected' : ''}`;
         card.tabIndex = 0;
+        card.setAttribute('aria-selected', String(isSelected));
         card.style.animationDelay = `${Math.min(index * 35, 280)}ms`;
-        card.addEventListener('click', () => openDetail(entry));
+        const activate = () => state.selecting ? toggleSelection(entry.url) : openDetail(entry);
+        card.addEventListener('click', activate);
         card.addEventListener('keydown', event => {
-          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openDetail(entry); }
+          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(); }
         });
 
         const media = makeImage(entry);
         media.className = 'media';
+        if (state.selecting) {
+          const check = document.createElement('span');
+          check.className = 'selection-check';
+          check.textContent = '✓';
+          check.setAttribute('aria-hidden', 'true');
+          media.append(check);
+        }
         const content = document.createElement('div');
         content.className = 'card-content';
         const row = document.createElement('div');
@@ -418,7 +461,8 @@
         remove.setAttribute('aria-label', `Delete ${entry.title || 'capture'}`);
         remove.append(icon('trash'));
         remove.addEventListener('click', event => { event.stopPropagation(); deleteEntry(entry); });
-        row.append(badge, remove);
+        row.append(badge);
+        if (!state.selecting) row.append(remove);
 
         const title = document.createElement('h2');
         title.textContent = entry.title || 'Untitled capture';
@@ -439,6 +483,71 @@
         card.append(media, content);
         return card;
       }));
+    }
+
+    function toggleSelection(url) {
+      if (state.selected.has(url)) state.selected.delete(url);
+      else state.selected.add(url);
+      renderGrid();
+    }
+
+    function setSelectionMode(enabled) {
+      state.selecting = enabled;
+      if (!enabled) state.selected.clear();
+      selectButton.setAttribute('aria-pressed', String(enabled));
+      selectButton.querySelector('.button-label').textContent = enabled ? 'Done' : 'Select';
+      renderGrid();
+    }
+
+    function renderBulkActions() {
+      bulkBar.hidden = !state.selecting;
+      if (!state.selecting) return;
+      const visible = filteredEntries();
+      const selectedVisible = visible.filter(entry => state.selected.has(entry.url)).length;
+      document.querySelector('#selected-count').textContent = String(state.selected.size);
+      document.querySelector('#delete-selected').disabled = state.selected.size === 0;
+      document.querySelector('#select-visible').textContent = visible.length > 0 && selectedVisible === visible.length
+        ? 'Clear visible'
+        : `Select visible (${visible.length})`;
+    }
+
+    function toggleVisibleSelection() {
+      const visible = filteredEntries();
+      const allSelected = visible.length > 0 && visible.every(entry => state.selected.has(entry.url));
+      visible.forEach(entry => allSelected ? state.selected.delete(entry.url) : state.selected.add(entry.url));
+      renderGrid();
+    }
+
+    async function deleteSelected() {
+      const urls = Array.from(state.selected);
+      if (!urls.length) return;
+      const deletingEverything = urls.length === state.entries.length;
+      const message = deletingEverything
+        ? `Delete all ${urls.length} captures and their screenshots? This cannot be undone.`
+        : `Delete ${urls.length} selected capture${urls.length === 1 ? '' : 's'} and their screenshots?`;
+      if (!confirm(message)) return;
+      try {
+        let deleted;
+        try {
+          const result = await api('/api/archive/bulk', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ urls }) });
+          deleted = result.deleted;
+        } catch (err) {
+          if (err.status !== 404) throw err;
+          for (const url of urls) {
+            await api('/api/archive', {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url }),
+            });
+          }
+          deleted = urls.length;
+        }
+        const removed = new Set(urls);
+        state.entries = state.entries.filter(entry => !removed.has(entry.url));
+        setSelectionMode(false);
+        renderFilters();
+        showToast(`${deleted} capture${deleted === 1 ? '' : 's'} deleted.`);
+      } catch (err) { showToast(err.message, true); }
     }
 
     function openDetail(entry) {
@@ -537,6 +646,10 @@
     }
 
     document.querySelector('#search').addEventListener('input', event => { state.query = event.target.value.trim().toLocaleLowerCase(); renderGrid(); });
+    selectButton.addEventListener('click', () => setSelectionMode(!state.selecting));
+    document.querySelector('#select-visible').addEventListener('click', toggleVisibleSelection);
+    document.querySelector('#delete-selected').addEventListener('click', deleteSelected);
+    document.querySelector('#cancel-selection').addEventListener('click', () => setSelectionMode(false));
     document.querySelector('#settings-button').addEventListener('click', () => { fillSettings(); settingsDialog.showModal(); });
     document.querySelector('#settings-form').addEventListener('submit', saveSettings);
     document.querySelector('#clear-key').addEventListener('click', clearApiKey);
