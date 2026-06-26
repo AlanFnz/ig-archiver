@@ -2,19 +2,18 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { chromium } from 'playwright';
 import { promises as fs } from 'fs';
 import path from 'path';
 
-import { readDb, writeDb } from './lib/db.js';
-import { capturePageInfo } from './lib/capture.js';
-import { summarize } from './lib/summarize.js';
-import { runConcurrent } from './lib/concurrency.js';
+import { partitionEntriesByUrl, readDb, writeDb } from './lib/db.js';
+import { runArchiveBatch } from './lib/archive-runner.js';
 import { PORT, SCREENSHOTS, SESSION_FILE, getConfig, getPublicConfig, setConfig } from './lib/config.js';
+import { createJobManager } from './lib/jobs.js';
 
 // ── express app ───────────────────────────────────────────────────────────────
 
 const app = express();
+const jobs = createJobManager({ runner: runArchiveBatch });
 
 app.use(cors({
   origin(origin, callback) {
@@ -44,6 +43,39 @@ app.get('/api/archive', async (req, res) => {
   }
 });
 
+async function removeScreenshots(entries) {
+  await Promise.all(entries.map(async entry => {
+    if (!entry.screenshotPath) return;
+    const screenshotFile = path.join(SCREENSHOTS, path.basename(entry.screenshotPath));
+    await fs.unlink(screenshotFile).catch(err => {
+      if (err.code !== 'ENOENT') console.warn(`[ig-archiver] Could not delete screenshot: ${err.message}`);
+    });
+  }));
+}
+
+// API: delete multiple entries from the archive
+app.delete('/api/archive/bulk', async (req, res) => {
+  const { urls } = req.body;
+  if (!Array.isArray(urls) || urls.length === 0 || urls.length > 500) {
+    return res.status(400).json({ error: '"urls" must contain between 1 and 500 entries.' });
+  }
+  if (urls.some(url => typeof url !== 'string')) {
+    return res.status(400).json({ error: 'Every bulk-delete URL must be a string.' });
+  }
+
+  try {
+    const db = await readDb();
+    const { removed, remaining } = partitionEntriesByUrl(db, urls);
+    if (removed.length === 0) return res.status(404).json({ error: 'No matching entries found.' });
+
+    await writeDb(remaining);
+    await removeScreenshots(removed);
+    res.json({ success: true, deleted: removed.length });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update database.' });
+  }
+});
+
 // API: delete an entry from archive
 app.delete('/api/archive', async (req, res) => {
   const { url } = req.body;
@@ -58,12 +90,7 @@ app.delete('/api/archive', async (req, res) => {
     }
     const filtered = db.filter(e => e.url !== url);
     await writeDb(filtered);
-    if (entry.screenshotPath) {
-      const screenshotFile = path.join(SCREENSHOTS, path.basename(entry.screenshotPath));
-      await fs.unlink(screenshotFile).catch(err => {
-        if (err.code !== 'ENOENT') console.warn(`[ig-archiver] Could not delete screenshot: ${err.message}`);
-      });
-    }
+    await removeScreenshots([entry]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update database.' });
@@ -86,6 +113,56 @@ app.post('/api/config', (req, res) => {
   }
 });
 
+function archiveRequestError(body) {
+  const { urls, urlMessages = {} } = body || {};
+  if (!Array.isArray(urls) || urls.length === 0) {
+    return 'Request body must contain a non-empty "urls" array.';
+  }
+  if (urls.length > 250 || urls.some(url => typeof url !== 'string' || url.length > 2_000)) {
+    return 'Archive batches may contain at most 250 valid URL strings.';
+  }
+  if (!urlMessages || typeof urlMessages !== 'object' || Array.isArray(urlMessages)) {
+    return '"urlMessages" must be an object when provided.';
+  }
+  return null;
+}
+
+// API: create and control persistent archive jobs
+app.post('/api/jobs', (req, res) => {
+  const error = archiveRequestError(req.body);
+  if (error) return res.status(400).json({ error });
+
+  try {
+    const job = jobs.create({ urls: req.body.urls, urlMessages: req.body.urlMessages || {} });
+    res.status(202).json(job.serialize());
+  } catch (err) {
+    if (err.code === 'JOB_ACTIVE') {
+      return res.status(409).json({ error: err.message, job: err.job.serialize() });
+    }
+    res.status(500).json({ error: 'Failed to create archive job.' });
+  }
+});
+
+app.get('/api/jobs/:id', (req, res) => {
+  const job = jobs.get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Archive job not found.' });
+  const after = Math.max(0, Number.parseInt(req.query.after || '0', 10) || 0);
+  res.json(job.serialize({ after }));
+});
+
+for (const action of ['pause', 'resume', 'cancel']) {
+  app.post(`/api/jobs/:id/${action}`, (req, res) => {
+    const job = jobs.get(req.params.id);
+    if (!job) return res.status(404).json({ error: 'Archive job not found.' });
+    try {
+      job[action]();
+      res.json(job.serialize());
+    } catch (err) {
+      res.status(409).json({ error: err.message, job: job.serialize() });
+    }
+  });
+}
+
 /**
  * post /archive
  * body: { urls: string[] }
@@ -93,85 +170,31 @@ app.post('/api/config', (req, res) => {
  * streams NDJSON progress events back to the client:
  *   { type: 'progress', index: number, total: number, url: string }
  *   { type: 'done',     url: string, category: string, summary: string }
+ *   { type: 'skipped',  url: string, category: string, summary: string }
  *   { type: 'error',    url: string, message: string }
  */
 app.post('/archive', async (req, res) => {
   const { urls, urlMessages = {} } = req.body;
-
-  if (!Array.isArray(urls) || urls.length === 0) {
-    return res.status(400).json({ error: 'Request body must contain a non-empty "urls" array.' });
-  }
-  if (urls.length > 250 || urls.some(url => typeof url !== 'string' || url.length > 2_000)) {
-    return res.status(400).json({ error: 'Archive batches may contain at most 250 valid URL strings.' });
-  }
-  if (!urlMessages || typeof urlMessages !== 'object' || Array.isArray(urlMessages)) {
-    return res.status(400).json({ error: '"urlMessages" must be an object when provided.' });
-  }
+  const error = archiveRequestError(req.body);
+  if (error) return res.status(400).json({ error });
 
   res.setHeader('Content-Type', 'application/x-ndjson');
   res.setHeader('Transfer-Encoding', 'chunked');
   res.setHeader('Cache-Control', 'no-cache');
   res.flushHeaders();
 
-  const send = obj => res.write(JSON.stringify(obj) + '\n');
-
-  // load the DB once up-front and accumulate changes in memory.
-  // a single write after the loop replaces N reads + N writes.
-  const db    = await readDb();
-  const byUrl = new Map(db.map((e, i) => [e.url, i]));
-  const now   = new Date().toISOString();
-
-  // launch one browser for the entire batch; each URL gets its own context.
-  let browser;
+  const send = obj => {
+    if (!res.destroyed && !res.writableEnded) res.write(JSON.stringify(obj) + '\n');
+  };
 
   try {
-    browser = await chromium.launch({ headless: true });
-    await runConcurrent(urls, getConfig().concurrency, async (url, itemIndex) => {
-      const displayIndex = itemIndex + 1;
-      send({ type: 'progress', index: displayIndex, total: urls.length, url });
-
-      try {
-        const parsedUrl = new URL(url);
-        const validHost = parsedUrl.hostname === 'instagram.com' || parsedUrl.hostname === 'www.instagram.com';
-        const validPath = /^\/(?:p|reel)\//.test(parsedUrl.pathname);
-        if (parsedUrl.protocol !== 'https:' || !validHost || !validPath) {
-          throw new Error('Only HTTPS Instagram post and reel URLs can be archived.');
-        }
-
-        const { screenshotPath, absoluteScreenshotPath, title, description, caption } =
-          await capturePageInfo(browser, url);
-        const userMessage = urlMessages[url] || undefined;
-        const { summary, category, keywords } =
-          await summarize(url, title, caption, description, absoluteScreenshotPath, userMessage);
-
-        const entry = { url, title, metaDescription: description, userMessage, summary, category, keywords, screenshotPath, archivedAt: now };
-
-        const idx = byUrl.get(url);
-        if (idx !== undefined) {
-          db[idx] = { ...db[idx], ...entry, updatedAt: now };
-        } else {
-          byUrl.set(url, db.length);
-          db.push({ ...entry, createdAt: now });
-        }
-
-        console.log(`[ig-archiver] [${displayIndex}/${urls.length}] ${url} → ${category}`);
-        send({ type: 'done', url, category, summary, screenshotPath });
-      } catch (err) {
-        const message = err.message ?? String(err);
-        console.error(`[ig-archiver] [${displayIndex}/${urls.length}] ${url} — ERROR:`, message);
-        send({ type: 'error', url, message });
-      }
-    });
+    await runArchiveBatch({ urls, urlMessages, onEvent: send });
   } catch (err) {
     const message = err.message ?? String(err);
     console.error('[ig-archiver] Archive batch failed:', message);
     send({ type: 'error', url: '', message: `Archive batch failed: ${message}` });
   } finally {
-    // always close the browser and persist whatever was successfully archived,
-    // even if the loop exited early due to an unexpected error.
-    if (browser) await browser.close().catch(err => console.warn(`[ig-archiver] Browser close failed: ${err.message}`));
-    await writeDb(db).catch(err => console.error(`[ig-archiver] Database write failed: ${err.message}`));
-    res.end();
+    if (!res.destroyed && !res.writableEnded) res.end();
   }
 });
 

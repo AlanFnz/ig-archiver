@@ -154,6 +154,10 @@
     .field label { color: var(--muted); font-size: .7rem; font-weight: 500; }
     .field input, .field textarea { border-radius: 10px; padding: 10px 11px; font-size: .78rem; }
     .field textarea { min-height: 110px; resize: vertical; line-height: 1.5; }
+    .toggle-field { display: flex; grid-column: 1 / -1; align-items: flex-start; gap: 10px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 10px; background: rgb(255 255 255 / 2%); cursor: pointer; }
+    .toggle-field input { width: 16px; height: 16px; flex: 0 0 auto; margin: 1px 0 0; accent-color: var(--blue); }
+    .toggle-field strong { display: block; margin-bottom: 3px; font-size: .73rem; }
+    .toggle-field span { display: block; color: var(--subtle); font-size: .65rem; line-height: 1.45; }
     .hint { margin: 0; color: var(--subtle); font-size: .65rem; line-height: 1.5; }
     .form-error { display: none; padding: 10px 12px; border: 1px solid rgb(239 119 119 / 18%); border-radius: 9px; color: #ffaaaa; background: rgb(239 119 119 / 8%); font-size: .72rem; }
     .form-error.visible { display: block; }
@@ -260,6 +264,10 @@
             <div class="field"><label for="timeout">Timeout in seconds</label><input id="timeout" name="timeout" type="number" min="5" max="120" required></div>
             <div class="field"><label for="viewport-width">Screenshot width</label><input id="viewport-width" name="viewportW" type="number" min="320" max="3840" required></div>
             <div class="field"><label for="viewport-height">Screenshot height</label><input id="viewport-height" name="viewportH" type="number" min="320" max="2160" required></div>
+            <label class="toggle-field" for="skip-existing">
+              <input id="skip-existing" name="skipExisting" type="checkbox">
+              <span><strong>Skip existing captures</strong><span>Previously archived URLs count as skipped and are not captured or summarized again.</span></span>
+            </label>
           </div>
         </section>
         <section class="settings-section">
@@ -591,6 +599,7 @@
       document.querySelector('#timeout').value = config.timeoutMs / 1000;
       document.querySelector('#viewport-width').value = config.viewportW;
       document.querySelector('#viewport-height').value = config.viewportH;
+      document.querySelector('#skip-existing').checked = config.skipExisting !== false;
       document.querySelector('#openai-model').value = config.openaiModel;
       document.querySelector('#openai-base-url').value = config.openaiBaseUrl || '';
       document.querySelector('#openai-key').value = '';
@@ -607,6 +616,7 @@
         timeoutMs: Number(document.querySelector('#timeout').value) * 1000,
         viewportW: Number(document.querySelector('#viewport-width').value),
         viewportH: Number(document.querySelector('#viewport-height').value),
+        skipExisting: document.querySelector('#skip-existing').checked,
         openaiModel: document.querySelector('#openai-model').value,
         openaiBaseUrl: document.querySelector('#openai-base-url').value,
         categories: document.querySelector('#categories').value.split('\n').map(value => value.trim()).filter(Boolean),

@@ -63,6 +63,11 @@ describe('config', () => {
     expect(CONCURRENCY).toBe(3)
   })
 
+  it('skips previously archived URLs by default', async () => {
+    const { getConfig } = await import('../lib/config.js')
+    expect(getConfig().skipExisting).toBe(true)
+  })
+
   it('reads CONCURRENCY from the environment', async () => {
     vi.stubEnv('CONCURRENCY', '5')
     const { CONCURRENCY } = await import('../lib/config.js')
@@ -94,6 +99,7 @@ describe('config', () => {
     [{ concurrency: 0 }, 'concurrency'],
     [{ timeoutMs: 100 }, 'timeoutMs'],
     [{ viewportW: -1 }, 'viewportW'],
+    [{ skipExisting: 'yes' }, 'skipExisting'],
     [{ categories: [] }, 'categories'],
     [{ categories: ['Ideas', 'ideas'] }, 'unique'],
     [{ openaiBaseUrl: 'file:///tmp/api' }, 'HTTP'],

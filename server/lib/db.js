@@ -15,3 +15,11 @@ export async function readDb() {
 export async function writeDb(entries) {
   await fs.writeFile(DB_PATH, JSON.stringify(entries, null, 2), 'utf8');
 }
+
+export function partitionEntriesByUrl(entries, urls) {
+  const requested = new Set(urls);
+  return {
+    removed: entries.filter(entry => requested.has(entry.url)),
+    remaining: entries.filter(entry => !requested.has(entry.url)),
+  };
+}

@@ -45,6 +45,7 @@ const DEFAULTS = Object.freeze({
   timeoutMs: TIMEOUT_MS,
   viewportW: VIEWPORT_W,
   viewportH: VIEWPORT_H,
+  skipExisting: true,
   categories: VALID_CATEGORIES,
   openaiModel: process.env.OPENAI_MODEL || 'gpt-4o',
   openaiBaseUrl: process.env.OPENAI_BASE_URL || '',
@@ -55,6 +56,7 @@ const EDITABLE_KEYS = new Set([
   'timeoutMs',
   'viewportW',
   'viewportH',
+  'skipExisting',
   'categories',
   'openaiModel',
   'openaiBaseUrl',
@@ -94,6 +96,9 @@ function validatePatch(patch) {
   if ('timeoutMs' in patch) assertInteger(patch.timeoutMs, 'timeoutMs', 5_000, 120_000);
   if ('viewportW' in patch) assertInteger(patch.viewportW, 'viewportW', 320, 3_840);
   if ('viewportH' in patch) assertInteger(patch.viewportH, 'viewportH', 320, 2_160);
+  if ('skipExisting' in patch && typeof patch.skipExisting !== 'boolean') {
+    throw new TypeError('skipExisting must be a boolean.');
+  }
 
   if ('categories' in patch) {
     if (!Array.isArray(patch.categories) || patch.categories.length < 1 || patch.categories.length > 50) {

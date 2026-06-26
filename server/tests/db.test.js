@@ -13,7 +13,7 @@ vi.mock('../lib/config.js', () => ({
   DB_PATH: '/fake/database.json',
 }))
 
-import { readDb, writeDb } from '../lib/db.js'
+import { partitionEntriesByUrl, readDb, writeDb } from '../lib/db.js'
 
 describe('readDb', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -59,5 +59,25 @@ describe('writeDb', () => {
     mockWriteFile.mockResolvedValueOnce(undefined)
     await writeDb([])
     expect(mockWriteFile).toHaveBeenCalledWith('/fake/database.json', '[]', 'utf8')
+  })
+})
+
+describe('partitionEntriesByUrl', () => {
+  const entries = [
+    { url: 'https://www.instagram.com/p/a/' },
+    { url: 'https://www.instagram.com/p/b/' },
+    { url: 'https://www.instagram.com/p/c/' },
+  ]
+
+  it('separates matching entries while preserving order', () => {
+    const result = partitionEntriesByUrl(entries, [entries[0].url, entries[2].url])
+    expect(result.removed).toEqual([entries[0], entries[2]])
+    expect(result.remaining).toEqual([entries[1]])
+  })
+
+  it('ignores duplicate and unknown URLs', () => {
+    const result = partitionEntriesByUrl(entries, [entries[1].url, entries[1].url, 'missing'])
+    expect(result.removed).toEqual([entries[1]])
+    expect(result.remaining).toEqual([entries[0], entries[2]])
   })
 })
