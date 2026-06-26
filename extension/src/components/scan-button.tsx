@@ -16,7 +16,7 @@ export function ScanButton({ onClick, disabled }: ScanButtonProps) {
           <path d="M4 7.5V5a1 1 0 0 1 1-1h2.5M16.5 4H19a1 1 0 0 1 1 1v2.5M20 16.5V19a1 1 0 0 1-1 1h-2.5M7.5 20H5a1 1 0 0 1-1-1v-2.5" />
           <circle cx="12" cy="12" r="3.2" />
         </svg>
-        Scan &amp; archive chat
+        Scan loaded messages
       </span>
     </button>
   );

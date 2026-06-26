@@ -168,6 +168,7 @@ describe('autoScrollOnce', () => {
 
   beforeEach(() => {
     clearThreads()
+    document.body.replaceChildren()
     vi.useFakeTimers()
     OriginalXHR = window.XMLHttpRequest
 
@@ -191,6 +192,31 @@ describe('autoScrollOnce', () => {
 
   it('returns false when slideThreads has no entry for the resolved fbid', async () => {
     expect(await autoScrollOnce()).toBe(false)
+  })
+
+  it('scrolls the conversation container before replaying GraphQL', async () => {
+    setThread('t1', [], { has_next_page: true })
+    const scroller = document.createElement('div')
+    scroller.style.overflowY = 'auto'
+    Object.defineProperties(scroller, {
+      clientHeight: { value: 500 },
+      clientWidth: { value: 600 },
+      scrollHeight: { value: 2_000 },
+    })
+    scroller.scrollTo = vi.fn(() => {
+      setTimeout(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(window as any).__igSlideThreads.t1.edges.push(edge('https://www.instagram.com/p/Older/'))
+      }, 100)
+    })
+    document.body.append(scroller)
+
+    const result = autoScrollOnce()
+    await vi.runAllTimersAsync()
+
+    expect(await result).toBe(true)
+    expect(scroller.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'auto' })
+    expect(mockXHR.open).not.toHaveBeenCalled()
   })
 
   it('returns false when has_next_page is false', async () => {

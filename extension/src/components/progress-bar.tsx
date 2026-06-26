@@ -2,9 +2,10 @@ interface ProgressBarProps {
   processed: number;
   total: number;
   failed?: number;
+  skipped?: number;
 }
 
-export function ProgressBar({ processed, total, failed = 0 }: ProgressBarProps) {
+export function ProgressBar({ processed, total, failed = 0, skipped = 0 }: ProgressBarProps) {
   const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
 
   return (
@@ -20,7 +21,9 @@ export function ProgressBar({ processed, total, failed = 0 }: ProgressBarProps) 
       </div>
       {total > 0 && (
         <p className="mt-2 text-[11px] text-[#77778c] text-right tabular-nums">
-          {processed} / {total} complete{failed > 0 ? ` · ${failed} failed` : ''}
+          {processed} / {total} complete
+          {skipped > 0 ? ` · ${skipped} skipped` : ''}
+          {failed > 0 ? ` · ${failed} failed` : ''}
         </p>
       )}
     </div>

@@ -3,8 +3,9 @@
  *
  * serialization constraint: self-contained, no module-level closures
  *
- * scrolls the conversation container to the top, then waits up to 2.5s for
- * instagram to fetch a new batch of messages (detected via edge count increase)
+ * scrolls the conversation container to the top and waits for Instagram to
+ * fetch older messages. If the UI does not paginate, it replays the most recent
+ * captured GraphQL request with the next cursor.
  * returns true if new content was loaded, false if nothing new arrived
  */
 export async function autoScrollOnce(): Promise<boolean> {
@@ -33,6 +34,33 @@ export async function autoScrollOnce(): Promise<boolean> {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const stored: any = slideThreads[fbid];
+
+  // First use Instagram's native UI pagination. This is more resilient than
+  // replaying a GraphQL operation whose doc id or variables may change.
+  const beforeScroll = totalEdges();
+  const root = document.querySelector('main') ?? document.body;
+  const scrollCandidates = Array.from(root.querySelectorAll<HTMLElement>('div'))
+    .filter(element => {
+      const style = getComputedStyle(element);
+      return /(auto|scroll)/.test(style.overflowY)
+        && element.clientHeight > 160
+        && element.clientWidth > 260
+        && element.scrollHeight > element.clientHeight + 100;
+    })
+    .sort((a, b) => (b.clientHeight * b.clientWidth) - (a.clientHeight * a.clientWidth));
+
+  const conversationScroller = scrollCandidates[0];
+  if (conversationScroller) {
+    conversationScroller.scrollTo({ top: 0, behavior: 'auto' });
+    conversationScroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+
+    const deadline = Date.now() + 1_500;
+    while (Date.now() < deadline) {
+      await new Promise<void>(resolve => setTimeout(resolve, 100));
+      if (totalEdges() > beforeScroll) return true;
+    }
+  }
+
   const pageInfo = stored.pageInfo ?? {};
 
   console.log('[ig-archiver] autoScrollOnce — pageInfo:', JSON.stringify(pageInfo));

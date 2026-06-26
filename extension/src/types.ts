@@ -13,10 +13,12 @@ export interface ScanState {
   total: number;
   succeeded: number;
   failed: number;
+  skipped: number;
   statusFeed: StatusEntry[];
 }
 
 export type ArchiveEvent =
   | { type: 'progress'; index: number; total: number; url: string }
   | { type: 'done'; url: string; category: string; summary: string; screenshotPath: string }
+  | { type: 'skipped'; url: string; category: string; summary: string }
   | { type: 'error'; url: string; message: string };

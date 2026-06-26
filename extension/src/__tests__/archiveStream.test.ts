@@ -61,6 +61,19 @@ describe('archiveStream', () => {
     expect(events[0]).toMatchObject({ type: 'error', message: 'Navigation failed' })
   })
 
+  it('yields skipped events for previously archived URLs', async () => {
+    const url = 'https://www.instagram.com/p/abc/'
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      body: ndjsonStream([{ type: 'skipped', url, category: 'Memes', summary: 'Existing.' }]),
+    }))
+
+    const events = []
+    for await (const event of archiveStream([url])) events.push(event)
+
+    expect(events[0]).toMatchObject({ type: 'skipped', url })
+  })
+
   it('silently skips malformed NDJSON lines', async () => {
     const url = 'https://www.instagram.com/p/abc/'
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
