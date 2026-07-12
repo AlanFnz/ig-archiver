@@ -8,7 +8,7 @@ ig-archiver/
 │   ├── src/
 │   │   ├── components/           # UI components (app, header, scan-button, progress-bar, status-feed)
 │   │   ├── platform/             # platform abstraction (types, chromePlatform, electronPlatform)
-│   │   ├── lib/                  # archiveStream, scraper, config, truncate
+│   │   ├── lib/                  # persistent archive jobs, scraper, config, truncate
 │   │   ├── main.tsx
 │   │   ├── types.ts
 │   │   └── index.css
@@ -20,7 +20,7 @@ ig-archiver/
 └── server/                       # express backend
     ├── server.js
     ├── login.js
-    ├── lib/                      # db, config, capture, concurrency, summarize
+    ├── lib/                      # jobs, archive runner, db, capture, summarize
     ├── public/                   # responsive archive dashboard
     ├── package.json
     ├── .env.example
@@ -105,12 +105,13 @@ Then in Chrome:
 1. Open Instagram in Chrome — the extension's content script begins intercepting data immediately
 2. Navigate to the DM conversation you want to archive
 3. Click the **IG Archiver** toolbar icon
-4. Click **Scan & Archive Chat**
-5. The extension auto-scrolls to the top of the conversation (5 batches by default), then archives every shared reel and post it found
-6. Watch real-time progress as multiple reels/posts are captured and summarised concurrently
-7. Open `http://localhost:3000` (or use the popup link) to browse your archive
+4. Optionally try **Load older messages** or manually scroll upward to load more of the conversation
+5. Click **Scan loaded messages** to archive every loaded shared reel and post
+6. Pause, resume, or stop the server job from the popup as needed
+7. Close the popup or switch tabs safely; reopening it reconnects to the active job
+8. Open `http://localhost:3000` (or use the popup link) to browse your archive
 
-> To capture more history, increase `SCROLL_LOADS` in `extension/src/lib/config.ts` and rebuild.
+> Instagram history loading is experimental because its private conversation API changes frequently. If it cannot load another batch, scroll upward manually and scan the messages currently loaded in the page.
 
 ---
 
@@ -119,10 +120,10 @@ Then in Chrome:
 ```
 Chrome Extension                        Node.js Server
 ────────────────────────────────        ────────────────────────────────
-content-script.js (MAIN world)          POST /archive  { urls: [...] }
+content-script.js (MAIN world)          POST /api/jobs  { urls: [...] }
   → patches XHR at document_start            │
   → captures get_slide_thread_nullable        ↓
-    and fetch__SlideThread graphql      bounded workers (streaming NDJSON):
+    and fetch__SlideThread graphql      persistent job with bounded workers:
     responses as you browse                1. Playwright visits URL (authenticated)
   → stores SlideMessageXMAContent              - waitUntil: load (falls back to
     nodes in window.__igSlideThreads            domcontentloaded on timeout)
@@ -131,9 +132,10 @@ autoScrollOnce() (MAIN world)                  - SHA-1 filename → screenshots/
   → reads pageInfo cursor from           2. extract <title>, meta description,
     window.__igSlideThreads                  and post caption (article h1)
   → replays XHR to fetch older batch    3. GPT-4o vision → screenshot + caption
-  → called SCROLL_LOADS times before       → summary, category + keywords
-    scraping                            4. upsert entry in database.json
-                                        5. stream progress event back
+  → used only by the optional history     → summary, category + keywords
+    action                              4. upsert entry in database.json
+                                        5. expose polled progress plus
+                                           pause/resume/stop controls
 scrapeExternalLinks() (MAIN world)
   → reads window.__igSlideThreads
   → matches current thread via
@@ -146,7 +148,8 @@ scrapeExternalLinks() (MAIN world)
     (node.text / node.message /
     xma.message, first non-empty wins)
   → sends URL list + message map
-    to server
+    to server and stores the returned
+    job ID to reconnect after closure
 ```
 
 ### database.json schema
@@ -176,7 +179,7 @@ scrapeExternalLinks() (MAIN world)
 
 ## Testing
 
-Both packages ship a [Vitest](https://vitest.dev/) suite (99 tests total).
+Both packages ship a [Vitest](https://vitest.dev/) suite (118 tests total).
 
 ```bash
 # server
@@ -206,7 +209,7 @@ Watch mode: replace `npm test` with `npm run test:watch`.
 
 `SCROLL_LOADS` (extension-side, in `extension/src/lib/config.ts`) controls how many scroll batches are fetched before scraping. Default is `5`.
 
-The dashboard Settings dialog can override concurrency, timeout, screenshot dimensions, categories, model, API base URL, and API key. Values are validated and stored locally in ignored `server/config.json`. The API key is write-only in the dashboard and is never returned by `/api/config`; environment variables remain the defaults.
+The dashboard Settings dialog can override concurrency, timeout, screenshot dimensions, existing-URL skipping, categories, model, API base URL, and API key. Values are validated and stored locally in ignored `server/config.json`. The API key is write-only in the dashboard and is never returned by `/api/config`; environment variables remain the defaults.
 
 The extension gear menu stores a custom archive-server URL in Chrome local storage. Remote server origins are requested as optional host permissions only when configured.
 
@@ -218,7 +221,10 @@ The server hosts a responsive dashboard at `http://localhost:3000` with:
 - Dynamic category filters
 - Screenshot cards and an accessible detail dialog
 - Archive deletion, including screenshot cleanup
+- Bulk selection with delete-selected and delete-all-visible actions
 - Runtime capture, category, and OpenAI-compatible provider settings
+
+Archive jobs run in the Node.js process, so closing the extension popup or switching browser tabs does not interrupt them. Pause prevents new URLs from starting after active workers finish; Stop preserves completed results and cancels the remaining queue. Jobs survive popup closure, but not a server restart.
 
 The server only accepts cross-origin browser requests from Chrome extensions and its own localhost origin. It is designed as a personal local service, not a public multi-user application.
 
@@ -230,8 +236,10 @@ The server only accepts cross-origin browser requests from Chrome extensions and
 |---------|-----|
 | `No session.json found` | Run `yarn run login` in `/server`. |
 | `OpenAI API key is not configured` | Add it in dashboard Settings or copy `.env.example` → `.env`. |
-| `Navigation failed` for a URL | The site may block headless browsers or be down. The URL is skipped; other URLs continue. |
+| `Navigation failed` for a URL | Instagram may be unavailable or the saved session may have expired. Retry once, then run `yarn run login` if it persists. |
+| Capture reports HTTP 429 or a blank page | The server automatically retries through Instagram's embed view. If both views fail, wait before retrying and temporarily reduce concurrency to `1`. |
+| Existing records still show blank screenshots | Disable **Skip existing archived URLs**, rescan them once, then re-enable it. |
 | Extension shows "No shared posts found" | Make sure the page was loaded with the extension active (reload the tab after installing). |
 | `Error: connect ECONNREFUSED` in extension | Make sure the server is running (`yarn start` in `/server`). |
 | Playwright browser not found | Run `yarn playwright install chromium` inside `/server`. |
-| Fewer links than expected | Increase `SCROLL_LOADS` in `extension/src/lib/config.ts` and rebuild — Instagram loads messages in batches. |
+| Fewer links than expected | Scroll upward manually before scanning, or try **Load older messages (experimental)**. Instagram's private history API is inconsistent. |
