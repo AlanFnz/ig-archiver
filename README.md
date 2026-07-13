@@ -2,6 +2,8 @@
 
 Scrapes shared reels and posts from Instagram DMs, takes screenshots with Playwright, and generates AI summaries via GPT-4o vision. Any text message the sender wrote alongside the link is captured and used as intent context for the summary.
 
+Current development version: **0.1.0**. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
 ```
 ig-archiver/
 ├── extension/                    # chrome extension (React + TypeScript + Tailwind v4 + Vite 6)
