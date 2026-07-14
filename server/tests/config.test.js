@@ -68,6 +68,19 @@ describe('config', () => {
     expect(getConfig().skipExisting).toBe(true)
   })
 
+  it('uses bounded retry defaults', async () => {
+    const { getConfig } = await import('../lib/config.js')
+    expect(getConfig()).toMatchObject({ retryAttempts: 3, retryBaseMs: 750 })
+  })
+
+  it('relocates runtime files through DATA_DIR', async () => {
+    vi.stubEnv('DATA_DIR', '/tmp/ig-archiver-data')
+    const { DB_PATH, SCREENSHOTS, SESSION_FILE } = await import('../lib/config.js')
+    expect(DB_PATH).toBe('/tmp/ig-archiver-data/archive.sqlite')
+    expect(SCREENSHOTS).toBe('/tmp/ig-archiver-data/screenshots')
+    expect(SESSION_FILE).toBe('/tmp/ig-archiver-data/session.json')
+  })
+
   it('reads CONCURRENCY from the environment', async () => {
     vi.stubEnv('CONCURRENCY', '5')
     const { CONCURRENCY } = await import('../lib/config.js')
@@ -100,6 +113,8 @@ describe('config', () => {
     [{ timeoutMs: 100 }, 'timeoutMs'],
     [{ viewportW: -1 }, 'viewportW'],
     [{ skipExisting: 'yes' }, 'skipExisting'],
+    [{ retryAttempts: 0 }, 'retryAttempts'],
+    [{ retryBaseMs: 20 }, 'retryBaseMs'],
     [{ categories: [] }, 'categories'],
     [{ categories: ['Ideas', 'ideas'] }, 'unique'],
     [{ openaiBaseUrl: 'file:///tmp/api' }, 'HTTP'],

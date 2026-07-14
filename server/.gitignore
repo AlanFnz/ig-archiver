@@ -2,6 +2,9 @@ node_modules/
 session.json
 screenshots/
 database.json
+archive.sqlite
+archive.sqlite-*
+archive.sqlite.tmp
 config.json
 .env
 .DS_Store

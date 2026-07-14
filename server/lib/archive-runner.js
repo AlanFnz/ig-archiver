@@ -2,8 +2,9 @@ import { chromium } from 'playwright';
 
 import { capturePageInfo } from './capture.js';
 import { getConfig } from './config.js';
-import { readDb, writeDb } from './db.js';
+import { findArchiveByUrl, upsertArchive } from './db.js';
 import { runConcurrent } from './concurrency.js';
+import { logger } from './logger.js';
 import { summarize } from './summarize.js';
 
 const DEFAULT_CONTROL = {
@@ -20,15 +21,22 @@ function validateInstagramUrl(url) {
   }
 }
 
+function isRetryable(error) {
+  const message = (error?.message || String(error)).toLocaleLowerCase();
+  return ['429', 'timeout', 'timed out', 'navigation failed', 'blank page', 'econnreset', 'socket hang up']
+    .some(fragment => message.includes(fragment));
+}
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export async function runArchiveBatch({
   urls,
   urlMessages = {},
   onEvent = () => {},
   control = DEFAULT_CONTROL,
 }) {
-  const db = await readDb();
-  const byUrl = new Map(db.map((entry, index) => [entry.url, index]));
-  const now = new Date().toISOString();
   const config = getConfig();
   let browser;
 
@@ -39,15 +47,14 @@ export async function runArchiveBatch({
       if (control.isCancelled()) return;
 
       const displayIndex = itemIndex + 1;
-      onEvent({ type: 'progress', index: displayIndex, total: urls.length, url });
+      await onEvent({ type: 'progress', index: displayIndex, total: urls.length, url });
 
       try {
         validateInstagramUrl(url);
 
-        const existingIndex = byUrl.get(url);
-        if (config.skipExisting && existingIndex !== undefined) {
-          const existing = db[existingIndex];
-          onEvent({
+        const existing = await findArchiveByUrl(url);
+        if (config.skipExisting && existing) {
+          await onEvent({
             type: 'skipped',
             url,
             category: existing.category || 'Uncategorized',
@@ -56,11 +63,34 @@ export async function runArchiveBatch({
           return;
         }
 
-        const { screenshotPath, absoluteScreenshotPath, title, description, caption } =
-          await capturePageInfo(browser, url);
+        let captured;
+        let lastError;
+        for (let attempt = 1; attempt <= config.retryAttempts; attempt++) {
+          try {
+            captured = await capturePageInfo(browser, url);
+            break;
+          } catch (err) {
+            lastError = err;
+            if (attempt === config.retryAttempts || !isRetryable(err) || control.isCancelled()) throw err;
+            const delayMs = config.retryBaseMs * (2 ** (attempt - 1));
+            logger.warn('capture.retry', 'Retrying transient Instagram capture failure.', {
+              url,
+              attempt,
+              nextAttempt: attempt + 1,
+              delayMs,
+              error: err.message ?? String(err),
+            });
+            await wait(delayMs);
+          }
+        }
+        if (!captured) throw lastError || new Error('Capture failed without an error.');
+
+        const { screenshotPath, absoluteScreenshotPath, title, description, caption } = captured;
         const userMessage = urlMessages[url] || undefined;
         const { summary, category, keywords } =
           await summarize(url, title, caption, description, absoluteScreenshotPath, userMessage);
+
+        const now = new Date().toISOString();
 
         const entry = {
           url,
@@ -74,26 +104,33 @@ export async function runArchiveBatch({
           archivedAt: now,
         };
 
-        const existingIndexAfterCapture = byUrl.get(url);
-        if (existingIndexAfterCapture !== undefined) {
-          db[existingIndexAfterCapture] = { ...db[existingIndexAfterCapture], ...entry, updatedAt: now };
-        } else {
-          byUrl.set(url, db.length);
-          db.push({ ...entry, createdAt: now });
-        }
+        await upsertArchive({
+          ...entry,
+          createdAt: existing?.createdAt || now,
+          updatedAt: existing ? now : undefined,
+        });
 
-        console.log(`[ig-archiver] [${displayIndex}/${urls.length}] ${url} → ${category}`);
-        onEvent({ type: 'done', url, category, summary, screenshotPath });
+        logger.info('capture.completed', 'Archived Instagram URL.', {
+          url,
+          category,
+          index: displayIndex,
+          total: urls.length,
+        });
+        await onEvent({ type: 'done', url, category, summary, screenshotPath });
       } catch (err) {
         const message = err.message ?? String(err);
-        console.error(`[ig-archiver] [${displayIndex}/${urls.length}] ${url} — ERROR:`, message);
-        onEvent({ type: 'error', url, message });
+        logger.error('capture.failed', 'Failed to archive Instagram URL.', {
+          url,
+          index: displayIndex,
+          total: urls.length,
+          error: message,
+        });
+        await onEvent({ type: 'error', url, message });
       }
     });
   } finally {
     if (browser) {
       await browser.close().catch(err => console.warn(`[ig-archiver] Browser close failed: ${err.message}`));
     }
-    await writeDb(db);
   }
 }

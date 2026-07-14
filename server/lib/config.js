@@ -4,6 +4,8 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
+export const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : ROOT;
+export const PUBLIC_DIR = path.join(ROOT, 'public');
 
 function envInt(name, fallback) {
   const value = Number.parseInt(process.env[name] ?? '', 10);
@@ -16,10 +18,11 @@ function boundedEnvInt(name, fallback, min, max) {
 }
 
 export const PORT = boundedEnvInt('PORT', 3000, 1, 65_535);
-export const SCREENSHOTS = path.join(ROOT, 'screenshots');
-export const DB_PATH = path.join(ROOT, 'database.json');
-export const SESSION_FILE = path.join(ROOT, 'session.json');
-export const CONFIG_PATH = path.join(ROOT, 'config.json');
+export const SCREENSHOTS = path.join(DATA_DIR, 'screenshots');
+export const LEGACY_DB_PATH = path.join(DATA_DIR, 'database.json');
+export const DB_PATH = process.env.DATABASE_PATH || path.join(DATA_DIR, 'archive.sqlite');
+export const SESSION_FILE = path.join(DATA_DIR, 'session.json');
+export const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 
 export const VIEWPORT_W = boundedEnvInt('SCREENSHOT_WIDTH', 1280, 320, 3_840);
 export const VIEWPORT_H = boundedEnvInt('SCREENSHOT_HEIGHT', 720, 320, 2_160);
@@ -46,6 +49,8 @@ const DEFAULTS = Object.freeze({
   viewportW: VIEWPORT_W,
   viewportH: VIEWPORT_H,
   skipExisting: true,
+  retryAttempts: boundedEnvInt('RETRY_ATTEMPTS', 3, 1, 5),
+  retryBaseMs: boundedEnvInt('RETRY_BASE_MS', 750, 100, 10_000),
   categories: VALID_CATEGORIES,
   openaiModel: process.env.OPENAI_MODEL || 'gpt-4o',
   openaiBaseUrl: process.env.OPENAI_BASE_URL || '',
@@ -57,6 +62,8 @@ const EDITABLE_KEYS = new Set([
   'viewportW',
   'viewportH',
   'skipExisting',
+  'retryAttempts',
+  'retryBaseMs',
   'categories',
   'openaiModel',
   'openaiBaseUrl',
@@ -99,6 +106,8 @@ function validatePatch(patch) {
   if ('skipExisting' in patch && typeof patch.skipExisting !== 'boolean') {
     throw new TypeError('skipExisting must be a boolean.');
   }
+  if ('retryAttempts' in patch) assertInteger(patch.retryAttempts, 'retryAttempts', 1, 5);
+  if ('retryBaseMs' in patch) assertInteger(patch.retryBaseMs, 'retryBaseMs', 100, 10_000);
 
   if ('categories' in patch) {
     if (!Array.isArray(patch.categories) || patch.categories.length < 1 || patch.categories.length > 50) {

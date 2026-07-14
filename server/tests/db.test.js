@@ -1,83 +1,113 @@
-import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { promises as fs } from 'fs'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
-const { mockReadFile, mockWriteFile } = vi.hoisted(() => ({
-  mockReadFile: vi.fn(),
-  mockWriteFile: vi.fn(),
+const { DB_PATH, LEGACY_DB_PATH } = vi.hoisted(() => ({
+  DB_PATH: '/tmp/ig-archiver-db-test.sqlite',
+  LEGACY_DB_PATH: '/tmp/ig-archiver-legacy-test.json',
 }))
 
-vi.mock('fs', () => ({
-  promises: { readFile: mockReadFile, writeFile: mockWriteFile },
-}))
+vi.mock('../lib/config.js', () => ({ DB_PATH, LEGACY_DB_PATH }))
 
-vi.mock('../lib/config.js', () => ({
-  DB_PATH: '/fake/database.json',
-}))
+import {
+  closeDatabase,
+  deleteArchives,
+  exportArchive,
+  findArchiveByUrl,
+  importArchive,
+  initializeDatabase,
+  listStoredJobs,
+  partitionEntriesByUrl,
+  readDb,
+  saveStoredJob,
+  upsertArchive,
+  writeDb,
+} from '../lib/db.js'
 
-import { partitionEntriesByUrl, readDb, writeDb } from '../lib/db.js'
-
-describe('readDb', () => {
-  beforeEach(() => vi.clearAllMocks())
-
-  it('returns [] when the file does not exist', async () => {
-    mockReadFile.mockRejectedValueOnce(Object.assign(new Error('no such file'), { code: 'ENOENT' }))
-    expect(await readDb()).toEqual([])
-  })
-
-  it('returns [] for malformed JSON', async () => {
-    mockReadFile.mockResolvedValueOnce('{ not valid json {{')
-    expect(await readDb()).toEqual([])
-  })
-
-  it('returns the parsed array from a valid file', async () => {
-    const data = [{ url: 'https://www.instagram.com/p/abc/', category: 'Memes' }]
-    mockReadFile.mockResolvedValueOnce(JSON.stringify(data))
-    expect(await readDb()).toEqual(data)
-  })
-
-  it('reads from the configured DB_PATH', async () => {
-    mockReadFile.mockResolvedValueOnce('[]')
-    await readDb()
-    expect(mockReadFile).toHaveBeenCalledWith('/fake/database.json', 'utf8')
-  })
+const entry = (url, overrides = {}) => ({
+  url,
+  title: 'Title',
+  metaDescription: 'Description',
+  summary: 'Summary',
+  category: 'References',
+  keywords: 'one, two',
+  screenshotPath: 'screenshots/example.png',
+  archivedAt: '2026-07-14T10:00:00.000Z',
+  createdAt: '2026-07-14T10:00:00.000Z',
+  ...overrides,
 })
 
-describe('writeDb', () => {
-  beforeEach(() => vi.clearAllMocks())
-
-  it('writes to DB_PATH with 2-space indentation', async () => {
-    mockWriteFile.mockResolvedValueOnce(undefined)
-    const data = [{ url: 'https://www.instagram.com/p/abc/' }]
-    await writeDb(data)
-    expect(mockWriteFile).toHaveBeenCalledWith(
-      '/fake/database.json',
-      JSON.stringify(data, null, 2),
-      'utf8',
-    )
+describe('SQLite storage', () => {
+  beforeEach(async () => {
+    await closeDatabase().catch(() => {})
+    await Promise.all([fs.rm(DB_PATH, { force: true }), fs.rm(`${DB_PATH}.tmp`, { force: true }), fs.rm(LEGACY_DB_PATH, { force: true })])
   })
 
-  it('writes an empty array correctly', async () => {
-    mockWriteFile.mockResolvedValueOnce(undefined)
-    await writeDb([])
-    expect(mockWriteFile).toHaveBeenCalledWith('/fake/database.json', '[]', 'utf8')
+  afterEach(async () => {
+    await closeDatabase().catch(() => {})
+    await Promise.all([fs.rm(DB_PATH, { force: true }), fs.rm(`${DB_PATH}.tmp`, { force: true }), fs.rm(LEGACY_DB_PATH, { force: true })])
+  })
+
+  it('creates a SQLite database and returns an empty archive', async () => {
+    await initializeDatabase()
+    expect(await readDb()).toEqual([])
+    expect((await fs.readFile(DB_PATH)).subarray(0, 15).toString()).toBe('SQLite format 3')
+  })
+
+  it('imports database.json once when SQLite is empty', async () => {
+    await fs.writeFile(LEGACY_DB_PATH, JSON.stringify([entry('https://www.instagram.com/p/legacy/')]))
+    expect(await readDb()).toHaveLength(1)
+
+    await closeDatabase()
+    await fs.writeFile(LEGACY_DB_PATH, JSON.stringify([entry('https://www.instagram.com/p/other/')]))
+    expect((await readDb())[0].url).toContain('/legacy/')
+  })
+
+  it('upserts entries idempotently while preserving their creation time', async () => {
+    const url = 'https://www.instagram.com/p/a/'
+    await upsertArchive(entry(url))
+    await upsertArchive(entry(url, { title: 'Updated', createdAt: '2099-01-01T00:00:00.000Z' }))
+    const stored = await findArchiveByUrl(url)
+    expect(stored).toMatchObject({ title: 'Updated', createdAt: '2026-07-14T10:00:00.000Z' })
+    expect(await readDb()).toHaveLength(1)
+  })
+
+  it('supports compatibility replacement and bulk deletion', async () => {
+    const entries = [entry('https://www.instagram.com/p/a/'), entry('https://www.instagram.com/p/b/')]
+    await writeDb(entries)
+    const removed = await deleteArchives([entries[0].url, 'missing'])
+    expect(removed.map(item => item.url)).toEqual([entries[0].url])
+    expect((await readDb()).map(item => item.url)).toEqual([entries[1].url])
+  })
+
+  it('exports and imports portable JSON backups', async () => {
+    await upsertArchive(entry('https://www.instagram.com/p/a/'))
+    const backup = await exportArchive()
+    expect(backup).toMatchObject({ format: 'ig-archiver-backup', version: 1 })
+    await importArchive([entry('https://www.instagram.com/p/b/')], { replace: true })
+    expect((await readDb()).map(item => item.url)).toEqual(['https://www.instagram.com/p/b/'])
+  })
+
+  it('persists job snapshots and events', async () => {
+    await saveStoredJob({
+      id: 'job-1', status: 'paused', urls: ['a'], urlMessages: {}, total: 1,
+      processed: 0, succeeded: 0, failed: 0, skipped: 0, sequence: 1, error: null,
+      createdAt: '2026-07-14T10:00:00.000Z', updatedAt: '2026-07-14T10:01:00.000Z', finishedAt: null,
+      events: [{ type: 'progress', url: 'a', sequence: 1, at: '2026-07-14T10:01:00.000Z' }],
+    })
+    expect(await listStoredJobs()).toEqual([
+      expect.objectContaining({ id: 'job-1', status: 'paused', events: [expect.objectContaining({ sequence: 1 })] }),
+    ])
   })
 })
 
 describe('partitionEntriesByUrl', () => {
-  const entries = [
-    { url: 'https://www.instagram.com/p/a/' },
-    { url: 'https://www.instagram.com/p/b/' },
-    { url: 'https://www.instagram.com/p/c/' },
-  ]
+  const entries = [{ url: 'a' }, { url: 'b' }, { url: 'c' }]
 
   it('separates matching entries while preserving order', () => {
-    const result = partitionEntriesByUrl(entries, [entries[0].url, entries[2].url])
-    expect(result.removed).toEqual([entries[0], entries[2]])
-    expect(result.remaining).toEqual([entries[1]])
+    expect(partitionEntriesByUrl(entries, ['a', 'c'])).toEqual({ removed: [entries[0], entries[2]], remaining: [entries[1]] })
   })
 
   it('ignores duplicate and unknown URLs', () => {
-    const result = partitionEntriesByUrl(entries, [entries[1].url, entries[1].url, 'missing'])
-    expect(result.removed).toEqual([entries[1]])
-    expect(result.remaining).toEqual([entries[0], entries[2]])
+    expect(partitionEntriesByUrl(entries, ['b', 'b', 'missing'])).toEqual({ removed: [entries[1]], remaining: [entries[0], entries[2]] })
   })
 })

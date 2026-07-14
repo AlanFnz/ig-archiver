@@ -207,6 +207,15 @@
       </div>
       <div class="top-actions">
         <div class="count-pill"><strong id="filtered-count">0</strong><span id="count-label">items</span></div>
+        <button class="button" id="export-button" type="button" aria-label="Export archive backup">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14"/></svg>
+          <span class="button-label">Export</span>
+        </button>
+        <button class="button" id="import-button" type="button" aria-label="Import archive backup">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V4m0 0 4 4m-4-4L8 8M5 20h14"/></svg>
+          <span class="button-label">Import</span>
+        </button>
+        <input id="import-file" type="file" accept="application/json,.json" hidden>
         <button class="button" id="select-button" type="button" aria-pressed="false" aria-label="Select captures">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="m14.5 17 2 2 4-5"/></svg>
           <span class="button-label">Select</span>
@@ -644,6 +653,24 @@
       } catch (err) { showToast(err.message, true); }
     }
 
+    async function importBackup(file) {
+      try {
+        const backup = JSON.parse(await file.text());
+        if (!confirm(`Merge ${backup.entries?.length ?? 0} backup entries into this archive? Existing URLs will be updated.`)) return;
+        const result = await api('/api/archive/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...backup, mode: 'merge' }),
+        });
+        await load();
+        showToast(`${result.imported} backup entr${result.imported === 1 ? 'y' : 'ies'} imported.`);
+      } catch (err) {
+        showToast(err.message || 'Could not import backup.', true);
+      } finally {
+        document.querySelector('#import-file').value = '';
+      }
+    }
+
     async function load() {
       renderEmpty('Loading your archive…', 'Fetching saved captures from the local server.');
       try {
@@ -656,6 +683,9 @@
     }
 
     document.querySelector('#search').addEventListener('input', event => { state.query = event.target.value.trim().toLocaleLowerCase(); renderGrid(); });
+    document.querySelector('#export-button').addEventListener('click', () => { window.location.assign('/api/archive/export'); });
+    document.querySelector('#import-button').addEventListener('click', () => document.querySelector('#import-file').click());
+    document.querySelector('#import-file').addEventListener('change', event => { if (event.target.files[0]) importBackup(event.target.files[0]); });
     selectButton.addEventListener('click', () => setSelectionMode(!state.selecting));
     document.querySelector('#select-visible').addEventListener('click', toggleVisibleSelection);
     document.querySelector('#delete-selected').addEventListener('click', deleteSelected);

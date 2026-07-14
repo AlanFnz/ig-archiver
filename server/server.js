@@ -4,16 +4,25 @@ import express from 'express';
 import cors from 'cors';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-import { partitionEntriesByUrl, readDb, writeDb } from './lib/db.js';
+import {
+  closeDatabase,
+  deleteArchives,
+  exportArchive,
+  importArchive,
+  readDb,
+} from './lib/db.js';
 import { runArchiveBatch } from './lib/archive-runner.js';
-import { PORT, SCREENSHOTS, SESSION_FILE, getConfig, getPublicConfig, setConfig } from './lib/config.js';
+import { PORT, PUBLIC_DIR, SCREENSHOTS, SESSION_FILE, getConfig, getPublicConfig, setConfig } from './lib/config.js';
 import { createJobManager } from './lib/jobs.js';
+import { logger } from './lib/logger.js';
 
 // ── express app ───────────────────────────────────────────────────────────────
 
-const app = express();
-const jobs = createJobManager({ runner: runArchiveBatch });
+export const app = express();
+export const jobs = createJobManager({ runner: runArchiveBatch });
+let httpServer;
 
 app.use(cors({
   origin(origin, callback) {
@@ -31,7 +40,7 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
 // serve screenshots statically so the UI can preview them
 app.use('/screenshots', express.static(SCREENSHOTS));
-app.use(express.static(path.join(path.dirname(SCREENSHOTS), 'public')));
+app.use(express.static(PUBLIC_DIR));
 
 // API: get all archived entries
 app.get('/api/archive', async (req, res) => {
@@ -48,7 +57,7 @@ async function removeScreenshots(entries) {
     if (!entry.screenshotPath) return;
     const screenshotFile = path.join(SCREENSHOTS, path.basename(entry.screenshotPath));
     await fs.unlink(screenshotFile).catch(err => {
-      if (err.code !== 'ENOENT') console.warn(`[ig-archiver] Could not delete screenshot: ${err.message}`);
+      if (err.code !== 'ENOENT') logger.warn('screenshot.delete_failed', 'Could not delete screenshot.', { error: err.message, file: screenshotFile });
     });
   }));
 }
@@ -64,11 +73,8 @@ app.delete('/api/archive/bulk', async (req, res) => {
   }
 
   try {
-    const db = await readDb();
-    const { removed, remaining } = partitionEntriesByUrl(db, urls);
+    const removed = await deleteArchives(urls);
     if (removed.length === 0) return res.status(404).json({ error: 'No matching entries found.' });
-
-    await writeDb(remaining);
     await removeScreenshots(removed);
     res.json({ success: true, deleted: removed.length });
   } catch (err) {
@@ -83,17 +89,45 @@ app.delete('/api/archive', async (req, res) => {
     return res.status(400).json({ error: 'Missing "url" parameter.' });
   }
   try {
-    const db = await readDb();
-    const entry = db.find(e => e.url === url);
+    const [entry] = await deleteArchives([url]);
     if (!entry) {
       return res.status(404).json({ error: 'Entry not found.' });
     }
-    const filtered = db.filter(e => e.url !== url);
-    await writeDb(filtered);
     await removeScreenshots([entry]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update database.' });
+  }
+});
+
+// API: portable JSON backup and restore
+app.get('/api/archive/export', async (_req, res) => {
+  try {
+    const backup = await exportArchive();
+    res.setHeader('Content-Disposition', `attachment; filename="ig-archiver-${backup.exportedAt.slice(0, 10)}.json"`);
+    res.json(backup);
+  } catch {
+    res.status(500).json({ error: 'Failed to export archive.' });
+  }
+});
+
+app.post('/api/archive/import', async (req, res) => {
+  const { format, entries, mode = 'merge' } = req.body || {};
+  if (format !== 'ig-archiver-backup' || !Array.isArray(entries)) {
+    return res.status(400).json({ error: 'A valid ig-archiver backup is required.' });
+  }
+  if (!['merge', 'replace'].includes(mode)) {
+    return res.status(400).json({ error: 'Import mode must be "merge" or "replace".' });
+  }
+  if (entries.length > 10_000) {
+    return res.status(400).json({ error: 'Backups may contain at most 10,000 entries.' });
+  }
+  try {
+    const imported = await importArchive(entries, { replace: mode === 'replace' });
+    res.json({ success: true, imported, mode });
+  } catch (err) {
+    const status = err instanceof TypeError ? 400 : 500;
+    res.status(status).json({ error: err.message || 'Failed to import archive.' });
   }
 });
 
@@ -128,12 +162,12 @@ function archiveRequestError(body) {
 }
 
 // API: create and control persistent archive jobs
-app.post('/api/jobs', (req, res) => {
+app.post('/api/jobs', async (req, res) => {
   const error = archiveRequestError(req.body);
   if (error) return res.status(400).json({ error });
 
   try {
-    const job = jobs.create({ urls: req.body.urls, urlMessages: req.body.urlMessages || {} });
+    const job = await jobs.create({ urls: req.body.urls, urlMessages: req.body.urlMessages || {} });
     res.status(202).json(job.serialize());
   } catch (err) {
     if (err.code === 'JOB_ACTIVE') {
@@ -151,11 +185,11 @@ app.get('/api/jobs/:id', (req, res) => {
 });
 
 for (const action of ['pause', 'resume', 'cancel']) {
-  app.post(`/api/jobs/:id/${action}`, (req, res) => {
+  app.post(`/api/jobs/:id/${action}`, async (req, res) => {
     const job = jobs.get(req.params.id);
     if (!job) return res.status(404).json({ error: 'Archive job not found.' });
     try {
-      job[action]();
+      await job[action]();
       res.json(job.serialize());
     } catch (err) {
       res.status(409).json({ error: err.message, job: job.serialize() });
@@ -191,7 +225,7 @@ app.post('/archive', async (req, res) => {
     await runArchiveBatch({ urls, urlMessages, onEvent: send });
   } catch (err) {
     const message = err.message ?? String(err);
-    console.error('[ig-archiver] Archive batch failed:', message);
+    logger.error('archive.batch_failed', 'Archive batch failed.', { error: message });
     send({ type: 'error', url: '', message: `Archive batch failed: ${message}` });
   } finally {
     if (!res.destroyed && !res.writableEnded) res.end();
@@ -203,37 +237,57 @@ app.use((err, _req, res, next) => {
   if (err.message === 'Origin is not allowed.') {
     return res.status(403).json({ error: err.message });
   }
-  console.error('[ig-archiver] Unhandled request error:', err);
+  logger.error('http.unhandled_error', 'Unhandled request error.', { error: err.message });
   res.status(500).json({ error: 'Unexpected server error.' });
 });
 
 // ── start ─────────────────────────────────────────────────────────────────────
 
-async function init() {
+export async function init() {
   await fs.mkdir(SCREENSHOTS, { recursive: true });
 
   if (!getConfig().openaiApiKey && process.env.MOCK !== 'true') {
-    console.warn('[ig-archiver] OpenAI API key is not configured. Add it in the dashboard Settings before archiving.');
+    logger.warn('config.openai_key_missing', 'OpenAI API key is not configured. Add it in dashboard Settings before archiving.');
   }
 
   try {
     await fs.access(SESSION_FILE);
   } catch {
-    console.error('[ig-archiver] No session.json found. Run `yarn run login` first.');
-    process.exit(1);
+    throw new Error('No session.json found. Run `yarn run login` first.');
   }
 
-  await new Promise((resolve, reject) => {
+  await jobs.init();
+
+  httpServer = await new Promise((resolve, reject) => {
     const server = app.listen(PORT, () => {
-      console.log(`\n[ig-archiver] server running on http://localhost:${PORT}`);
-      console.log(`[ig-archiver] Screenshots → ${SCREENSHOTS}\n`);
-      resolve();
+      logger.info('server.started', 'IG Archiver server started.', { port: PORT, screenshots: SCREENSHOTS });
+      resolve(server);
     });
     server.once('error', reject);
   });
+  return httpServer;
 }
 
-init().catch(err => {
-  console.error('[ig-archiver] Startup failed:', err);
-  process.exit(1);
-});
+async function shutdown(signal) {
+  logger.info('server.stopping', 'Stopping IG Archiver server.', { signal });
+  if (httpServer) await new Promise(resolve => httpServer.close(resolve));
+  await closeDatabase();
+}
+
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isMain) {
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.once(signal, () => {
+      shutdown(signal)
+        .then(() => process.exit(0))
+        .catch(err => {
+          logger.error('server.shutdown_failed', 'Server shutdown failed.', { error: err.message });
+          process.exit(1);
+        });
+    });
+  }
+  init().catch(err => {
+    logger.error('server.startup_failed', 'Server startup failed.', { error: err.message });
+    process.exit(1);
+  });
+}

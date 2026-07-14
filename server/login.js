@@ -1,10 +1,11 @@
 // login.js — run once to save an instagram session for the archiver server
+import 'dotenv/config';
 import { chromium } from 'playwright';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { promises as fs } from 'fs';
 
-const __dirname  = path.dirname(fileURLToPath(import.meta.url));
-const SESSION_FILE = path.join(__dirname, 'session.json');
+import { DATA_DIR, SESSION_FILE } from './lib/config.js';
+
+await fs.mkdir(DATA_DIR, { recursive: true });
 
 const browser = await chromium.launch({ headless: false });
 const context = await browser.newContext();

@@ -1,40 +1,62 @@
 import crypto from 'crypto';
 
+import { listStoredJobs, saveStoredJob } from './db.js';
+import { logger } from './logger.js';
+
 const ACTIVE_STATUSES = new Set(['queued', 'running', 'paused', 'cancelling']);
 const TERMINAL_STATUSES = new Set(['completed', 'cancelled', 'failed']);
+const TERMINAL_EVENT_TYPES = new Set(['done', 'error', 'skipped']);
 
 class ArchiveJob {
-  constructor({ urls, urlMessages, runner }) {
-    this.id = crypto.randomUUID();
-    this.urls = urls;
-    this.urlMessages = urlMessages;
+  constructor({ urls, urlMessages, runner, store, restored }) {
+    this.id = restored?.id || crypto.randomUUID();
+    this.urls = restored?.urls || urls;
+    this.urlMessages = restored?.urlMessages || urlMessages;
     this.runner = runner;
-    this.status = 'queued';
-    this.total = urls.length;
-    this.processed = 0;
-    this.succeeded = 0;
-    this.failed = 0;
-    this.skipped = 0;
-    this.events = [];
-    this.sequence = 0;
-    this.error = null;
-    this.createdAt = new Date().toISOString();
-    this.updatedAt = this.createdAt;
-    this.finishedAt = null;
-    this.pauseRequested = false;
+    this.store = store;
+    this.status = restored?.status || 'queued';
+    this.total = restored?.total ?? this.urls.length;
+    this.processed = restored?.processed || 0;
+    this.succeeded = restored?.succeeded || 0;
+    this.failed = restored?.failed || 0;
+    this.skipped = restored?.skipped || 0;
+    this.events = restored?.events || [];
+    this.sequence = restored?.sequence || 0;
+    this.error = restored?.error || null;
+    this.createdAt = restored?.createdAt || new Date().toISOString();
+    this.updatedAt = restored?.updatedAt || this.createdAt;
+    this.finishedAt = restored?.finishedAt || null;
+    this.pauseRequested = this.status === 'paused';
     this.cancelRequested = false;
     this.waiters = [];
+    this.persistence = Promise.resolve();
+  }
+
+  pendingUrls() {
+    const completed = new Set(
+      this.events.filter(event => TERMINAL_EVENT_TYPES.has(event.type)).map(event => event.url),
+    );
+    return this.urls.filter(url => !completed.has(url));
+  }
+
+  persist() {
+    const snapshot = this.toStored();
+    this.persistence = this.persistence.then(() => this.store.saveStoredJob(snapshot));
+    return this.persistence;
   }
 
   start() {
+    if (this.runPromise) return this.runPromise;
     this.runPromise = this.run();
+    return this.runPromise;
   }
 
   async run() {
-    this.setStatus('running');
+    await this.setStatus('running');
+    logger.info('job.started', 'Archive job started.', { jobId: this.id, total: this.total, remaining: this.pendingUrls().length });
     try {
       await this.runner({
-        urls: this.urls,
+        urls: this.pendingUrls(),
         urlMessages: this.urlMessages,
         onEvent: event => this.recordEvent(event),
         control: {
@@ -42,18 +64,21 @@ class ArchiveJob {
           waitUntilRunnable: () => this.waitUntilRunnable(),
         },
       });
-      this.setStatus(this.cancelRequested ? 'cancelled' : 'completed');
+      await this.setStatus(this.cancelRequested ? 'cancelled' : 'completed');
     } catch (err) {
       this.error = err.message ?? String(err);
-      this.setStatus(this.cancelRequested ? 'cancelled' : 'failed');
+      await this.setStatus(this.cancelRequested ? 'cancelled' : 'failed');
+      logger.error('job.failed', 'Archive job failed.', { jobId: this.id, error: this.error });
     } finally {
       this.finishedAt = new Date().toISOString();
       this.updatedAt = this.finishedAt;
       this.resolveWaiters();
+      await this.persist();
+      logger.info('job.finished', 'Archive job reached a terminal state.', { jobId: this.id, status: this.status, processed: this.processed });
     }
   }
 
-  recordEvent(event) {
+  async recordEvent(event) {
     const sequenced = { ...event, sequence: ++this.sequence, at: new Date().toISOString() };
     this.events.push(sequenced);
     if (this.events.length > 600) this.events.shift();
@@ -68,26 +93,34 @@ class ArchiveJob {
       this.skipped++;
     }
     this.updatedAt = sequenced.at;
+    await this.persist();
   }
 
-  pause() {
+  async pause() {
     if (this.status !== 'running') throw new Error('Only a running job can be paused.');
     this.pauseRequested = true;
-    this.setStatus('paused');
+    await this.setStatus('paused');
   }
 
-  resume() {
+  async resume() {
     if (this.status !== 'paused') throw new Error('Only a paused job can be resumed.');
     this.pauseRequested = false;
-    this.setStatus('running');
+    if (!this.runPromise) {
+      this.status = 'queued';
+      this.updatedAt = new Date().toISOString();
+      await this.persist();
+      this.start();
+      return;
+    }
+    await this.setStatus('running');
     this.resolveWaiters();
   }
 
-  cancel() {
+  async cancel() {
     if (!ACTIVE_STATUSES.has(this.status)) throw new Error('This job is no longer active.');
     this.cancelRequested = true;
     this.pauseRequested = false;
-    this.setStatus('cancelling');
+    await this.setStatus('cancelling');
     this.resolveWaiters();
   }
 
@@ -101,9 +134,30 @@ class ArchiveJob {
     waiters.forEach(resolve => resolve());
   }
 
-  setStatus(status) {
+  async setStatus(status) {
     this.status = status;
     this.updatedAt = new Date().toISOString();
+    await this.persist();
+  }
+
+  toStored() {
+    return {
+      id: this.id,
+      urls: this.urls,
+      urlMessages: this.urlMessages,
+      status: this.status,
+      total: this.total,
+      processed: this.processed,
+      succeeded: this.succeeded,
+      failed: this.failed,
+      skipped: this.skipped,
+      sequence: this.sequence,
+      error: this.error,
+      createdAt: this.createdAt,
+      updatedAt: this.updatedAt,
+      finishedAt: this.finishedAt,
+      events: this.events,
+    };
   }
 
   serialize({ after = 0 } = {}) {
@@ -124,12 +178,27 @@ class ArchiveJob {
   }
 }
 
-export function createJobManager({ runner }) {
+export function createJobManager({ runner, store = { listStoredJobs, saveStoredJob } }) {
   const jobs = new Map();
 
   return {
-    create({ urls, urlMessages }) {
-      const activeJob = Array.from(jobs.values()).find(job => ACTIVE_STATUSES.has(job.status));
+    async init() {
+      const restoredJobs = await store.listStoredJobs();
+      for (const restored of restoredJobs) {
+        if (restored.status === 'running' || restored.status === 'cancelling') restored.status = 'queued';
+        const job = new ArchiveJob({ runner, store, restored });
+        jobs.set(job.id, job);
+      }
+      const resumable = [...jobs.values()].find(job => job.status === 'queued');
+      if (resumable) {
+        logger.info('job.recovered', 'Resuming archive job after server restart.', { jobId: resumable.id });
+        resumable.start();
+      }
+      return jobs.size;
+    },
+
+    async create({ urls, urlMessages }) {
+      const activeJob = [...jobs.values()].find(job => ACTIVE_STATUSES.has(job.status));
       if (activeJob) {
         const err = new Error('Another archive job is already active.');
         err.code = 'JOB_ACTIVE';
@@ -137,8 +206,9 @@ export function createJobManager({ runner }) {
         throw err;
       }
 
-      const job = new ArchiveJob({ urls, urlMessages, runner });
+      const job = new ArchiveJob({ urls, urlMessages, runner, store });
       jobs.set(job.id, job);
+      await job.persist();
       job.start();
       return job;
     },
@@ -148,7 +218,7 @@ export function createJobManager({ runner }) {
     },
 
     hasActiveJob() {
-      return Array.from(jobs.values()).some(job => ACTIVE_STATUSES.has(job.status));
+      return [...jobs.values()].some(job => ACTIVE_STATUSES.has(job.status));
     },
 
     isTerminal(status) {
