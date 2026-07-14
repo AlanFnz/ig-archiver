@@ -1,0 +1,7 @@
+node_modules
+.env
+session.json
+database.json
+archive.sqlite*
+screenshots
+coverage

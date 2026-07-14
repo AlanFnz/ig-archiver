@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [server, extension]
+    defaults:
+      run:
+        working-directory: ${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ matrix.package }}/package-lock.json
+      - run: npm ci
+      - run: npm test -- --run
+      - if: matrix.package == 'extension'
+        run: npm run typecheck
+      - if: matrix.package == 'extension'
+        run: npm run build
