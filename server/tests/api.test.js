@@ -66,6 +66,29 @@ describe('HTTP API', () => {
     expect((await storage.readDb()).map(item => item.url)).toEqual([second.url])
   })
 
+  it('edits allowlisted archive fields and records manual provenance', async () => {
+    const original = entry('https://www.instagram.com/p/edit/')
+    await storage.upsertArchive({ ...original, aiConfidence: 84, aiConfidenceReason: 'Clear caption and screenshot.' })
+    const response = await request(app)
+      .patch('/api/archive')
+      .send({ url: original.url, title: 'Curated title', notes: 'Try this later.', category: 'Tutorials' })
+      .expect(200)
+
+    expect(response.body.entry).toMatchObject({
+      title: 'Curated title',
+      notes: 'Try this later.',
+      category: 'Tutorials',
+      aiConfidence: 84,
+    })
+    expect(response.body.entry.manuallyEditedAt).toBeTruthy()
+  })
+
+  it('rejects unknown edit fields and missing entries', async () => {
+    const url = 'https://www.instagram.com/p/missing/'
+    await request(app).patch('/api/archive').send({ url, screenshotPath: 'elsewhere.png' }).expect(400)
+    await request(app).patch('/api/archive').send({ url, title: 'No match' }).expect(404)
+  })
+
   it('validates imports and archive jobs', async () => {
     await request(app).post('/api/archive/import').send({ entries: [] }).expect(400)
     await request(app).post('/api/jobs').send({ urls: [] }).expect(400)

@@ -12,6 +12,7 @@ import {
   exportArchive,
   importArchive,
   readDb,
+  updateArchive,
 } from './lib/db.js';
 import { runArchiveBatch } from './lib/archive-runner.js';
 import { PORT, PUBLIC_DIR, SCREENSHOTS, SESSION_FILE, getConfig, getPublicConfig, setConfig } from './lib/config.js';
@@ -49,6 +50,42 @@ app.get('/api/archive', async (req, res) => {
     res.json(db);
   } catch (err) {
     res.status(500).json({ error: 'Failed to read database.' });
+  }
+});
+
+const EDITABLE_ARCHIVE_FIELDS = {
+  title: 300,
+  summary: 1_000,
+  category: 100,
+  keywords: 300,
+  notes: 2_000,
+};
+
+// API: edit user-owned archive metadata without changing capture provenance
+app.patch('/api/archive', async (req, res) => {
+  const { url, ...candidate } = req.body || {};
+  if (typeof url !== 'string' || !url) return res.status(400).json({ error: 'A valid "url" is required.' });
+  const fields = Object.keys(candidate);
+  if (fields.length === 0) return res.status(400).json({ error: 'At least one editable field is required.' });
+  if (fields.some(field => !(field in EDITABLE_ARCHIVE_FIELDS))) {
+    return res.status(400).json({ error: 'Only title, summary, category, keywords, and notes may be edited.' });
+  }
+  const patch = {};
+  for (const field of fields) {
+    if (typeof candidate[field] !== 'string') return res.status(400).json({ error: `"${field}" must be a string.` });
+    patch[field] = candidate[field].trim();
+    if (patch[field].length > EDITABLE_ARCHIVE_FIELDS[field]) {
+      return res.status(400).json({ error: `"${field}" may contain at most ${EDITABLE_ARCHIVE_FIELDS[field]} characters.` });
+    }
+  }
+  if ('category' in patch && !patch.category) return res.status(400).json({ error: 'Category cannot be empty.' });
+
+  try {
+    const entry = await updateArchive(url, patch);
+    if (!entry) return res.status(404).json({ error: 'Entry not found.' });
+    res.json({ success: true, entry });
+  } catch {
+    res.status(500).json({ error: 'Failed to update archive entry.' });
   }
 });
 

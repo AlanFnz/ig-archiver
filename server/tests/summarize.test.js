@@ -47,6 +47,7 @@ describe('summarize — MOCK mode', () => {
     expect(mockCreate).not.toHaveBeenCalled()
     expect(result.summary).toMatch(/mock summary/)
     expect(result.keywords).toBe('mock, keywords')
+    expect(result.aiConfidence).toBeNull()
     expect(VALID_CATEGORIES).toContain(result.category)
   })
 })
@@ -66,11 +67,22 @@ describe('summarize — live mode', () => {
       summary: 'A cool meme.',
       category: 'Memes',
       keywords: 'funny, viral',
+      confidence: 87,
+      confidenceReason: 'Caption and screenshot agree.',
     })))
     const result = await summarize('https://www.instagram.com/p/abc/', 'Title', 'caption', 'desc', FAKE_PATH)
     expect(result.summary).toBe('A cool meme.')
     expect(result.category).toBe('Memes')
     expect(result.keywords).toBe('funny, viral')
+    expect(result.aiConfidence).toBe(87)
+    expect(result.aiConfidenceReason).toBe('Caption and screenshot agree.')
+  })
+
+  it('clamps confidence and tolerates providers that omit it', async () => {
+    mockCreate.mockResolvedValueOnce(modelReturns(JSON.stringify({ summary: 'S', category: 'Memes', keywords: '', confidence: 140 })))
+    expect((await summarize('https://www.instagram.com/p/abc/', '', '', '', FAKE_PATH)).aiConfidence).toBe(100)
+    mockCreate.mockResolvedValueOnce(modelReturns(JSON.stringify({ summary: 'S', category: 'Memes', keywords: '' })))
+    expect((await summarize('https://www.instagram.com/p/abc/', '', '', '', FAKE_PATH)).aiConfidence).toBeNull()
   })
 
   it('parses JSON wrapped in a markdown code block', async () => {

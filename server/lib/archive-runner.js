@@ -87,7 +87,7 @@ export async function runArchiveBatch({
 
         const { screenshotPath, absoluteScreenshotPath, title, description, caption } = captured;
         const userMessage = urlMessages[url] || undefined;
-        const { summary, category, keywords } =
+        const { summary, category, keywords, aiConfidence, aiConfidenceReason } =
           await summarize(url, title, caption, description, absoluteScreenshotPath, userMessage);
 
         const now = new Date().toISOString();
@@ -100,6 +100,8 @@ export async function runArchiveBatch({
           summary,
           category,
           keywords,
+          aiConfidence,
+          aiConfidenceReason,
           screenshotPath,
           archivedAt: now,
         };

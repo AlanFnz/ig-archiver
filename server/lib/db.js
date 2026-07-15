@@ -8,7 +8,7 @@ export { DB_PATH, LEGACY_DB_PATH };
 
 const require = createRequire(import.meta.url);
 const wasmPath = require.resolve('sql.js/dist/sql-wasm.wasm');
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 let databasePromise;
 let writeQueue = Promise.resolve();
@@ -34,10 +34,14 @@ function archiveFromRow(row) {
     summary: row.summary || '',
     category: row.category || '',
     keywords: row.keywords || '',
+    notes: row.notes || '',
     screenshotPath: row.screenshot_path || '',
+    aiConfidence: row.ai_confidence == null ? null : row.ai_confidence,
+    aiConfidenceReason: row.ai_confidence_reason || '',
     archivedAt: row.archived_at,
     createdAt: row.created_at,
     ...(row.updated_at ? { updatedAt: row.updated_at } : {}),
+    ...(row.manually_edited_at ? { manuallyEditedAt: row.manually_edited_at } : {}),
   };
 }
 
@@ -94,6 +98,11 @@ function migrate(db) {
     );
     CREATE INDEX IF NOT EXISTS archive_job_events_job_idx ON archive_job_events(job_id, sequence);
   `);
+  const columns = new Set(rows(db, 'PRAGMA table_info(archive_entries)').map(column => column.name));
+  if (!columns.has('notes')) db.run("ALTER TABLE archive_entries ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+  if (!columns.has('ai_confidence')) db.run('ALTER TABLE archive_entries ADD COLUMN ai_confidence INTEGER');
+  if (!columns.has('ai_confidence_reason')) db.run("ALTER TABLE archive_entries ADD COLUMN ai_confidence_reason TEXT NOT NULL DEFAULT ''");
+  if (!columns.has('manually_edited_at')) db.run('ALTER TABLE archive_entries ADD COLUMN manually_edited_at TEXT');
   db.run(
     'INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)',
     [SCHEMA_VERSION, new Date().toISOString()],
@@ -105,8 +114,9 @@ function insertArchive(db, entry) {
   db.run(`
     INSERT INTO archive_entries (
       url, title, meta_description, user_message, summary, category, keywords,
-      screenshot_path, archived_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      notes, screenshot_path, ai_confidence, ai_confidence_reason,
+      archived_at, created_at, updated_at, manually_edited_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(url) DO UPDATE SET
       title = excluded.title,
       meta_description = excluded.meta_description,
@@ -114,9 +124,13 @@ function insertArchive(db, entry) {
       summary = excluded.summary,
       category = excluded.category,
       keywords = excluded.keywords,
+      notes = excluded.notes,
       screenshot_path = excluded.screenshot_path,
+      ai_confidence = excluded.ai_confidence,
+      ai_confidence_reason = excluded.ai_confidence_reason,
       archived_at = excluded.archived_at,
-      updated_at = excluded.updated_at
+      updated_at = excluded.updated_at,
+      manually_edited_at = excluded.manually_edited_at
   `, [
     entry.url,
     entry.title || '',
@@ -125,10 +139,14 @@ function insertArchive(db, entry) {
     entry.summary || '',
     entry.category || '',
     Array.isArray(entry.keywords) ? entry.keywords.join(', ') : (entry.keywords || ''),
+    entry.notes || '',
     entry.screenshotPath || '',
+    Number.isInteger(entry.aiConfidence) ? entry.aiConfidence : null,
+    entry.aiConfidenceReason || '',
     entry.archivedAt || now,
     entry.createdAt || now,
     entry.updatedAt || now,
+    entry.manuallyEditedAt || null,
   ]);
 }
 
@@ -219,6 +237,23 @@ export async function findArchiveByUrl(url) {
 
 export function upsertArchive(entry) {
   return withWrite(db => insertArchive(db, entry));
+}
+
+export function updateArchive(url, patch) {
+  return withWrite(db => {
+    const [row] = rows(db, 'SELECT * FROM archive_entries WHERE url = ?', [url]);
+    if (!row) return null;
+    const current = archiveFromRow(row);
+    const updated = {
+      ...current,
+      ...patch,
+      updatedAt: new Date().toISOString(),
+      manuallyEditedAt: new Date().toISOString(),
+    };
+    insertArchive(db, updated);
+    const [saved] = rows(db, 'SELECT * FROM archive_entries WHERE url = ?', [url]);
+    return archiveFromRow(saved);
+  });
 }
 
 export function writeDb(entries) {

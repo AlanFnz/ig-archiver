@@ -121,6 +121,9 @@
     .intent { margin: 12px 0 0; padding: 9px 10px; border-left: 2px solid var(--blue); border-radius: 0 8px 8px 0; color: #aaaac0; background: rgb(255 255 255 / 2%); font-size: .72rem; font-style: italic; }
     .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 14px; }
     .tag { padding: 4px 7px; border: 1px solid rgb(255 255 255 / 4%); border-radius: 6px; color: var(--subtle); background: rgb(255 255 255 / 3%); font-size: .64rem; }
+    .provenance { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 12px; }
+    .confidence { padding: 5px 8px; border: 1px solid rgb(91 159 219 / 18%); border-radius: 8px; color: #9dc8ee; background: rgb(91 159 219 / 8%); font-size: .65rem; font-weight: 600; }
+    .edited { color: #c5b1ea; font-size: .65rem; }
 
     .empty { grid-column: 1 / -1; padding: 80px 24px; border: 1px dashed var(--border-bright); border-radius: 19px; color: var(--muted); text-align: center; background: rgb(255 255 255 / 1.5%); }
     .empty svg { width: 34px; margin-bottom: 12px; color: var(--subtle); }
@@ -254,12 +257,32 @@
       <div class="detail-copy">
         <div class="detail-section"><h3>Category</h3><p id="detail-category"></p></div>
         <div class="detail-section" id="detail-intent-wrap"><h3>Saved with</h3><p id="detail-intent"></p></div>
-        <div class="detail-section"><h3>AI summary</h3><p id="detail-summary"></p></div>
+        <div class="detail-section"><h3 id="detail-summary-heading">AI summary</h3><p id="detail-summary"></p></div>
+        <div class="detail-section" id="detail-confidence-wrap"><h3>AI confidence at generation</h3><p id="detail-confidence"></p></div>
         <div class="detail-section" id="detail-description-wrap"><h3>Page description</h3><p id="detail-description"></p></div>
+        <div class="detail-section" id="detail-notes-wrap"><h3>Personal notes</h3><p id="detail-notes"></p></div>
         <div class="detail-section"><h3>Keywords</h3><div class="tags" id="detail-tags"></div></div>
+        <button class="button" id="edit-entry-button" type="button">Edit details</button>
         <a class="button button-primary" id="detail-link" target="_blank" rel="noreferrer">Open original post</a>
       </div>
     </div>
+  </dialog>
+
+  <dialog class="settings-dialog" id="edit-dialog" aria-labelledby="edit-title">
+    <div class="dialog-head"><div><h2 id="edit-title">Edit archive details</h2><p class="eyebrow">Manual changes are marked in the library</p></div><button class="dialog-close" type="button" data-close="edit-dialog" aria-label="Close">×</button></div>
+    <form id="edit-form">
+      <div class="settings-form">
+        <div class="field"><label for="edit-entry-title">Title</label><input id="edit-entry-title" maxlength="300"></div>
+        <div class="field-grid">
+          <div class="field"><label for="edit-category">Category</label><input id="edit-category" maxlength="100" list="category-options" required><datalist id="category-options"></datalist></div>
+          <div class="field"><label for="edit-keywords">Keywords</label><input id="edit-keywords" maxlength="300" placeholder="comma, separated"></div>
+        </div>
+        <div class="field"><label for="edit-summary">Summary</label><textarea id="edit-summary" maxlength="1000"></textarea></div>
+        <div class="field"><label for="edit-notes">Personal notes</label><textarea id="edit-notes" maxlength="2000" placeholder="Add your own context…"></textarea></div>
+        <div class="form-error" id="edit-error" role="alert"></div>
+      </div>
+      <div class="dialog-actions"><button class="button" type="button" data-close="edit-dialog">Cancel</button><button class="button button-primary" type="submit">Save changes</button></div>
+    </form>
   </dialog>
 
   <dialog class="settings-dialog" id="settings-dialog" aria-labelledby="settings-title">
@@ -301,13 +324,14 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script>
-    const state = { entries: [], config: null, category: 'All', query: '', selecting: false, selected: new Set() };
+    const state = { entries: [], config: null, category: 'All', query: '', selecting: false, selected: new Set(), activeEntry: null };
     const grid = document.querySelector('#grid');
     const filters = document.querySelector('#filters');
     const count = document.querySelector('#filtered-count');
     const countLabel = document.querySelector('#count-label');
     const detailDialog = document.querySelector('#detail-dialog');
     const settingsDialog = document.querySelector('#settings-dialog');
+    const editDialog = document.querySelector('#edit-dialog');
     const selectButton = document.querySelector('#select-button');
     const bulkBar = document.querySelector('#bulk-bar');
     let toastTimer;
@@ -399,7 +423,7 @@
     function filteredEntries() {
       return state.entries.filter(entry => {
         const matchesCategory = state.category === 'All' || categoryNames(entry.category).includes(state.category);
-        const haystack = [entry.title, entry.summary, entry.metaDescription, entry.userMessage, entry.keywords]
+        const haystack = [entry.title, entry.summary, entry.metaDescription, entry.userMessage, entry.keywords, entry.notes]
           .filter(value => typeof value === 'string').join(' ').toLocaleLowerCase();
         return matchesCategory && (!state.query || haystack.includes(state.query));
       });
@@ -487,6 +511,21 @@
         summary.className = 'summary';
         summary.textContent = entry.summary || 'No summary available.';
         content.append(row, title, summary);
+        const provenance = document.createElement('div');
+        provenance.className = 'provenance';
+        if (Number.isInteger(entry.aiConfidence)) {
+          const confidence = document.createElement('span');
+          confidence.className = 'confidence';
+          confidence.textContent = `AI confidence ${entry.aiConfidence}%`;
+          provenance.append(confidence);
+        }
+        if (entry.manuallyEditedAt) {
+          const edited = document.createElement('span');
+          edited.className = 'edited';
+          edited.textContent = 'Manually edited';
+          provenance.append(edited);
+        }
+        if (provenance.childNodes.length) content.append(provenance);
         if (entry.userMessage) {
           const intent = document.createElement('p');
           intent.className = 'intent';
@@ -568,15 +607,25 @@
     }
 
     function openDetail(entry) {
+      state.activeEntry = entry;
       document.querySelector('#detail-title').textContent = entry.title || 'Archive details';
       document.querySelector('#detail-category').textContent = entry.category || 'Uncategorized';
       document.querySelector('#detail-summary').textContent = entry.summary || 'No summary available.';
+      document.querySelector('#detail-summary-heading').textContent = entry.manuallyEditedAt ? 'Summary · manually edited' : 'AI summary';
+      const confidenceWrap = document.querySelector('#detail-confidence-wrap');
+      confidenceWrap.hidden = !Number.isInteger(entry.aiConfidence);
+      document.querySelector('#detail-confidence').textContent = Number.isInteger(entry.aiConfidence)
+        ? `${entry.aiConfidence}%${entry.aiConfidenceReason ? ` — ${entry.aiConfidenceReason}` : ''}`
+        : '';
       const intentWrap = document.querySelector('#detail-intent-wrap');
       intentWrap.hidden = !entry.userMessage;
       document.querySelector('#detail-intent').textContent = entry.userMessage || '';
       const descriptionWrap = document.querySelector('#detail-description-wrap');
       descriptionWrap.hidden = !entry.metaDescription;
       document.querySelector('#detail-description').textContent = entry.metaDescription || '';
+      const notesWrap = document.querySelector('#detail-notes-wrap');
+      notesWrap.hidden = !entry.notes;
+      document.querySelector('#detail-notes').textContent = entry.notes || '';
       appendTags(document.querySelector('#detail-tags'), keywords(entry.keywords));
       const image = makeImage(entry);
       document.querySelector('#detail-image').replaceChildren(...image.childNodes);
@@ -588,6 +637,48 @@
         link.hidden = false;
       } catch { link.hidden = true; }
       detailDialog.showModal();
+    }
+
+    function openEditor() {
+      const entry = state.activeEntry;
+      if (!entry) return;
+      document.querySelector('#edit-entry-title').value = entry.title || '';
+      document.querySelector('#edit-category').value = entry.category || '';
+      document.querySelector('#edit-keywords').value = entry.keywords || '';
+      document.querySelector('#edit-summary').value = entry.summary || '';
+      document.querySelector('#edit-notes').value = entry.notes || '';
+      document.querySelector('#category-options').replaceChildren(...(state.config?.categories || []).map(value => {
+        const option = document.createElement('option'); option.value = value; return option;
+      }));
+      document.querySelector('#edit-error').className = 'form-error';
+      detailDialog.close();
+      editDialog.showModal();
+    }
+
+    async function saveEntry(event) {
+      event.preventDefault();
+      const payload = {
+        url: state.activeEntry.url,
+        title: document.querySelector('#edit-entry-title').value,
+        category: document.querySelector('#edit-category').value,
+        keywords: document.querySelector('#edit-keywords').value,
+        summary: document.querySelector('#edit-summary').value,
+        notes: document.querySelector('#edit-notes').value,
+      };
+      try {
+        const result = await api('/api/archive', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        state.entries = state.entries.map(entry => entry.url === result.entry.url ? result.entry : entry);
+        state.activeEntry = result.entry;
+        editDialog.close();
+        renderFilters();
+        renderGrid();
+        openDetail(result.entry);
+        showToast('Archive details updated.');
+      } catch (err) {
+        const error = document.querySelector('#edit-error');
+        error.textContent = err.message;
+        error.className = 'form-error visible';
+      }
     }
 
     async function deleteEntry(entry) {
@@ -692,9 +783,11 @@
     document.querySelector('#cancel-selection').addEventListener('click', () => setSelectionMode(false));
     document.querySelector('#settings-button').addEventListener('click', () => { fillSettings(); settingsDialog.showModal(); });
     document.querySelector('#settings-form').addEventListener('submit', saveSettings);
+    document.querySelector('#edit-entry-button').addEventListener('click', openEditor);
+    document.querySelector('#edit-form').addEventListener('submit', saveEntry);
     document.querySelector('#clear-key').addEventListener('click', clearApiKey);
     document.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => document.querySelector(`#${button.dataset.close}`).close()));
-    [detailDialog, settingsDialog].forEach(dialog => dialog.addEventListener('click', event => {
+    [detailDialog, settingsDialog, editDialog].forEach(dialog => dialog.addEventListener('click', event => {
       const bounds = dialog.getBoundingClientRect();
       if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close();
     }));

@@ -19,6 +19,7 @@ import {
   partitionEntriesByUrl,
   readDb,
   saveStoredJob,
+  updateArchive,
   upsertArchive,
   writeDb,
 } from '../lib/db.js'
@@ -77,6 +78,17 @@ describe('SQLite storage', () => {
     const removed = await deleteArchives([entries[0].url, 'missing'])
     expect(removed.map(item => item.url)).toEqual([entries[0].url])
     expect((await readDb()).map(item => item.url)).toEqual([entries[1].url])
+  })
+
+  it('persists AI provenance and tracks manual edits independently', async () => {
+    const url = 'https://www.instagram.com/p/curated/'
+    await upsertArchive(entry(url, { aiConfidence: 78, aiConfidenceReason: 'Readable caption.' }))
+    const updated = await updateArchive(url, { summary: 'Curated summary', notes: 'Personal context.' })
+    expect(updated).toMatchObject({
+      summary: 'Curated summary', notes: 'Personal context.',
+      aiConfidence: 78, aiConfidenceReason: 'Readable caption.',
+    })
+    expect(updated.manuallyEditedAt).toBeTruthy()
   })
 
   it('exports and imports portable JSON backups', async () => {
