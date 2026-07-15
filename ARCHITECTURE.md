@@ -83,4 +83,4 @@ Archive upserts provide a second idempotency boundary if a crash occurs between 
 
 ## Verification
 
-The server suite covers storage migration, idempotent upserts, persisted events, restart recovery, pause/resume/cancel semantics, retry behavior, and HTTP contracts. The extension suite covers scraping, configuration, job APIs, storage reconnection, and streamed-event compatibility. CI runs both suites plus TypeScript checking and the production extension build.
+The server suite covers storage migration, idempotent upserts, persisted events, restart recovery, pause/resume/cancel semantics, retry behavior, and HTTP contracts. The extension suite covers scraping, configuration, job APIs, storage reconnection, and streamed-event compatibility. Both packages use TypeScript checking and production builds in CI; the server emits its Node.js runtime to `server/dist/`.

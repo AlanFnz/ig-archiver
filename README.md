@@ -19,9 +19,10 @@ ig-archiver/
 │   │   └── content-script.js
 │   ├── package.json
 │   └── dist/                     # built output — load this folder in Chrome
-└── server/                       # express backend
-    ├── server.js
-    ├── login.js
+└── server/                       # Express + TypeScript backend
+    ├── server.ts
+    ├── login.ts
+    ├── tsconfig.json
     ├── lib/                      # jobs, archive runner, db, capture, summarize
     ├── public/                   # responsive archive dashboard
     ├── package.json
@@ -73,6 +74,7 @@ A browser window will open. Log in to Instagram, then come back to the terminal 
 ### 3 — Start the server
 
 ```bash
+yarn run build
 yarn start
 # or
 yarn run dev
