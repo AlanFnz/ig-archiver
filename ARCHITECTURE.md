@@ -32,11 +32,13 @@ Every URL reaches a terminal `done`, `skipped`, or `error` event. Archive identi
 `archive.sqlite` contains four tables:
 
 - `schema_migrations` records applied schema versions.
-- `archive_entries` stores captured metadata and screenshot references, keyed by URL.
+- `archive_entries` stores captured metadata, screenshot references, AI-confidence provenance, and manual edits, keyed by URL.
 - `archive_jobs` stores immutable inputs and current lifecycle counters.
 - `archive_job_events` stores sequenced progress and terminal events for popup reconnection and restart recovery.
 
 The service uses `sql.js`, a portable SQLite WebAssembly build. This avoids native compilation and makes local and container installation deterministic. Because the application is deliberately single-process, mutations are serialized in memory and the SQLite image is persisted with a temporary-file rename after each transaction. A multi-process deployment would require a native SQLite driver or an external database.
+
+The HTTP service is local-first and unauthenticated: it binds to loopback by default, and Compose publishes it only on host loopback. Runtime secrets saved through Settings are never returned by the API and are persisted through atomic owner-only files, but remain unencrypted at rest. Remote deployment requires an authenticated TLS boundary.
 
 ## Migration and compatibility
 

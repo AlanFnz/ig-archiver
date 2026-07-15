@@ -155,7 +155,7 @@ scrapeExternalLinks() (MAIN world)
     job ID to reconnect after closure
 ```
 
-### database.json schema
+### Archive entry schema
 
 ```json
 {
@@ -166,6 +166,9 @@ scrapeExternalLinks() (MAIN world)
   "summary": "A one-sentence AI-generated overview of the post.",
   "category": "Learning",
   "keywords": "cooking, recipe, italian",
+  "notes": "Try this recipe next weekend.",
+  "aiConfidence": 86,
+  "aiConfidenceReason": "Clear caption and visible cooking steps.",
   "screenshotPath": "screenshots/3a9f12b04c1e.png",
   "archivedAt": "2026-03-03T10:00:00.000Z",
   "createdAt": "2026-03-03T10:00:00.000Z"
@@ -200,8 +203,9 @@ Watch mode: replace `npm test` with `npm run test:watch`.
 
 | `.env` variable    | Default | Description                                                      |
 |--------------------|---------|------------------------------------------------------------------|
-| `OPENAI_API_KEY`   | —       | **Required.** Your OpenAI key.                                   |
+| `OPENAI_API_KEY`   | —       | Preferred API-key source; optional when saved in local Settings. |
 | `PORT`             | `3000`  | Server listen port.                                              |
+| `HOST`             | `127.0.0.1` | Listen address. Keep local unless protected by authentication. |
 | `SCREENSHOT_WIDTH` | `1280`  | Viewport / screenshot width.                                     |
 | `SCREENSHOT_HEIGHT`| `720`   | Viewport / screenshot height.                                    |
 | `TIMEOUT_MS`       | `30000` | Per-URL Playwright navigation timeout.                           |
@@ -215,7 +219,9 @@ Watch mode: replace `npm test` with `npm run test:watch`.
 
 `SCROLL_LOADS` (extension-side, in `extension/src/lib/config.ts`) controls how many scroll batches are fetched before scraping. Default is `5`.
 
-The dashboard Settings dialog can override concurrency, timeout, screenshot dimensions, existing-URL skipping, categories, model, API base URL, and API key. Values are validated and stored locally in ignored `server/config.json`. The API key is write-only in the dashboard and is never returned by `/api/config`; environment variables remain the defaults.
+The dashboard Settings dialog can override concurrency, timeout, screenshot dimensions, existing-URL skipping, categories, model, API base URL, and API key. Environment configuration is preferred for secrets. A key entered in Settings is stored unencrypted in ignored `server/config.json` (or `$DATA_DIR/config.json`) using atomic replacement and owner-only `0600` permissions. It is write-only in the dashboard and is never returned by `/api/config`; a stored key takes precedence over `OPENAI_API_KEY`, and **Use environment key** removes it.
+
+The server binds to `127.0.0.1` by default because the dashboard has no authentication. Docker listens on all interfaces inside the container but Compose publishes port 3000 only on the host loopback interface. Do not expose the service to a LAN or the public internet without adding authentication and TLS at a trusted reverse proxy.
 
 The extension gear menu stores a custom archive-server URL in Chrome local storage. Remote server origins are requested as optional host permissions only when configured.
 
@@ -226,6 +232,8 @@ The server hosts a responsive dashboard at `http://localhost:3000` with:
 - Full-text search across titles, summaries, notes, descriptions, and keywords
 - Dynamic category filters
 - Screenshot cards and an accessible detail dialog
+- Manual editing for titles, summaries, categories, keywords, and personal notes
+- AI interpretation confidence with a short evidence rationale; mock and legacy entries remain unscored
 - Archive deletion, including screenshot cleanup
 - Bulk selection with delete-selected and delete-all-visible actions
 - Runtime capture, category, and OpenAI-compatible provider settings
