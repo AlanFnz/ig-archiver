@@ -13,11 +13,11 @@ const SCHEMA_VERSION = 2;
 let databasePromise;
 let writeQueue = Promise.resolve();
 
-function rows(db, sql, params = []) {
+function rows(db: any, sql: string, params: any[] = []): any[] {
   const statement = db.prepare(sql);
   try {
     statement.bind(params);
-    const result = [];
+    const result: any[] = [];
     while (statement.step()) result.push(statement.getAsObject());
     return result;
   } finally {

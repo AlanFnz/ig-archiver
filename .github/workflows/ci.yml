@@ -22,7 +22,5 @@ jobs:
           cache-dependency-path: ${{ matrix.package }}/package-lock.json
       - run: npm ci
       - run: npm test -- --run
-      - if: matrix.package == 'extension'
-        run: npm run typecheck
-      - if: matrix.package == 'extension'
-        run: npm run build
+      - run: npm run typecheck
+      - run: npm run build

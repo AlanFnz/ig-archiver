@@ -1,9 +1,7 @@
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { chmodSync, existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.join(__dirname, '..');
+const ROOT = path.resolve(process.env.SERVER_ROOT || process.cwd());
 export const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : ROOT;
 export const PUBLIC_DIR = path.join(ROOT, 'public');
 

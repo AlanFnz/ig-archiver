@@ -217,7 +217,7 @@ app.post('/api/jobs', async (req, res) => {
 app.get('/api/jobs/:id', (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job) return res.status(404).json({ error: 'Archive job not found.' });
-  const after = Math.max(0, Number.parseInt(req.query.after || '0', 10) || 0);
+  const after = Math.max(0, Number.parseInt(typeof req.query.after === 'string' ? req.query.after : '0', 10) || 0);
   res.json(job.serialize({ after }));
 });
 

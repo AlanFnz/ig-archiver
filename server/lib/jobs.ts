@@ -8,7 +8,9 @@ const TERMINAL_STATUSES = new Set(['completed', 'cancelled', 'failed']);
 const TERMINAL_EVENT_TYPES = new Set(['done', 'error', 'skipped']);
 
 class ArchiveJob {
-  constructor({ urls, urlMessages, runner, store, restored }) {
+  [key: string]: any;
+
+  constructor({ urls = [], urlMessages = {}, runner, store, restored = null }: any) {
     this.id = restored?.id || crypto.randomUUID();
     this.urls = restored?.urls || urls;
     this.urlMessages = restored?.urlMessages || urlMessages;
@@ -200,7 +202,7 @@ export function createJobManager({ runner, store = { listStoredJobs, saveStoredJ
     async create({ urls, urlMessages }) {
       const activeJob = [...jobs.values()].find(job => ACTIVE_STATUSES.has(job.status));
       if (activeJob) {
-        const err = new Error('Another archive job is already active.');
+        const err = new Error('Another archive job is already active.') as Error & { code: string; job: ArchiveJob };
         err.code = 'JOB_ACTIVE';
         err.job = activeJob;
         throw err;

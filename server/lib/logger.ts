@@ -14,7 +14,7 @@ function write(level, event, message, context = {}) {
 }
 
 export const logger = {
-  info: (event, message, context) => write('info', event, message, context),
-  warn: (event, message, context) => write('warn', event, message, context),
-  error: (event, message, context) => write('error', event, message, context),
+  info: (event, message, context = {}) => write('info', event, message, context),
+  warn: (event, message, context = {}) => write('warn', event, message, context),
+  error: (event, message, context = {}) => write('error', event, message, context),
 };

@@ -2,18 +2,27 @@
   "name": "ig-archiver-server",
   "version": "0.2.0",
   "description": "Backend for ig-archiver — screenshots, AI summaries, and local database.",
-  "main": "server.js",
+  "main": "dist/server.js",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
-    "login": "node login.js",
-    "backup": "node scripts/backup.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/server.js",
+    "dev": "tsx watch server.ts",
+    "login": "tsx login.ts",
+    "backup": "tsx scripts/backup.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.15.30",
+    "@types/sql.js": "^1.4.9",
+    "@types/supertest": "^6.0.3",
     "supertest": "^7.1.4",
+    "tsx": "^4.20.6",
+    "typescript": "^5.7.3",
     "vitest": "^3.2.6"
   },
   "dependencies": {

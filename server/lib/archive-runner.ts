@@ -11,6 +11,7 @@ const DEFAULT_CONTROL = {
   isCancelled: () => false,
   waitUntilRunnable: async () => {},
 };
+const DEFAULT_EVENT_HANDLER = (_event?: unknown) => {};
 
 function validateInstagramUrl(url) {
   const parsedUrl = new URL(url);
@@ -34,7 +35,7 @@ function wait(ms) {
 export async function runArchiveBatch({
   urls,
   urlMessages = {},
-  onEvent = () => {},
+  onEvent = DEFAULT_EVENT_HANDLER,
   control = DEFAULT_CONTROL,
 }) {
   const config = getConfig();
