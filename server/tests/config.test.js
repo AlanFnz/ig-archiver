@@ -1,14 +1,20 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
-const { mockExistsSync, mockReadFileSync, mockWriteFileSync } = vi.hoisted(() => ({
+const { mockChmodSync, mockExistsSync, mockReadFileSync, mockRenameSync, mockUnlinkSync, mockWriteFileSync } = vi.hoisted(() => ({
+  mockChmodSync: vi.fn(),
   mockExistsSync: vi.fn(),
   mockReadFileSync: vi.fn(),
+  mockRenameSync: vi.fn(),
+  mockUnlinkSync: vi.fn(),
   mockWriteFileSync: vi.fn(),
 }))
 
 vi.mock('fs', () => ({
+  chmodSync: mockChmodSync,
   existsSync: mockExistsSync,
   readFileSync: mockReadFileSync,
+  renameSync: mockRenameSync,
+  unlinkSync: mockUnlinkSync,
   writeFileSync: mockWriteFileSync,
 }))
 
@@ -23,6 +29,13 @@ describe('config', () => {
   it('defaults PORT to 3000', async () => {
     const { PORT } = await import('../lib/config.js')
     expect(PORT).toBe(3000)
+  })
+
+  it('binds to localhost by default and accepts an explicit host', async () => {
+    expect((await import('../lib/config.js')).HOST).toBe('127.0.0.1')
+    vi.resetModules()
+    vi.stubEnv('HOST', '0.0.0.0')
+    expect((await import('../lib/config.js')).HOST).toBe('0.0.0.0')
   })
 
   it('reads PORT from the environment', async () => {
@@ -106,6 +119,10 @@ describe('config', () => {
 
     expect(getConfig()).toMatchObject({ concurrency: 5, categories: ['Research', 'Ideas'] })
     expect(mockWriteFileSync).toHaveBeenCalledOnce()
+    expect(mockWriteFileSync.mock.calls[0][0]).toMatch(/config\.json\.tmp$/)
+    expect(mockWriteFileSync.mock.calls[0][2]).toMatchObject({ mode: 0o600 })
+    expect(mockRenameSync).toHaveBeenCalledOnce()
+    expect(mockChmodSync).toHaveBeenLastCalledWith(expect.stringMatching(/config\.json$/), 0o600)
   })
 
   it.each([

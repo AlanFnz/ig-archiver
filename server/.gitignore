@@ -6,5 +6,6 @@ archive.sqlite
 archive.sqlite-*
 archive.sqlite.tmp
 config.json
+config.json.tmp
 .env
 .DS_Store

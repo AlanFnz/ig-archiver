@@ -15,7 +15,7 @@ import {
   updateArchive,
 } from './lib/db.js';
 import { runArchiveBatch } from './lib/archive-runner.js';
-import { PORT, PUBLIC_DIR, SCREENSHOTS, SESSION_FILE, getConfig, getPublicConfig, setConfig } from './lib/config.js';
+import { HOST, PORT, PUBLIC_DIR, SCREENSHOTS, SESSION_FILE, getConfig, getPublicConfig, setConfig } from './lib/config.js';
 import { createJobManager } from './lib/jobs.js';
 import { logger } from './lib/logger.js';
 
@@ -296,8 +296,8 @@ export async function init() {
   await jobs.init();
 
   httpServer = await new Promise((resolve, reject) => {
-    const server = app.listen(PORT, () => {
-      logger.info('server.started', 'IG Archiver server started.', { port: PORT, screenshots: SCREENSHOTS });
+    const server = app.listen(PORT, HOST, () => {
+      logger.info('server.started', 'IG Archiver server started.', { host: HOST, port: PORT, screenshots: SCREENSHOTS });
       resolve(server);
     });
     server.once('error', reject);

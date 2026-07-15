@@ -1,6 +1,6 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { chmodSync, existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -18,6 +18,7 @@ function boundedEnvInt(name, fallback, min, max) {
 }
 
 export const PORT = boundedEnvInt('PORT', 3000, 1, 65_535);
+export const HOST = process.env.HOST?.trim() || '127.0.0.1';
 export const SCREENSHOTS = path.join(DATA_DIR, 'screenshots');
 export const LEGACY_DB_PATH = path.join(DATA_DIR, 'database.json');
 export const DB_PATH = process.env.DATABASE_PATH || path.join(DATA_DIR, 'archive.sqlite');
@@ -178,7 +179,16 @@ export function setConfig(newConfig) {
     else delete nextConfig.openaiApiKey;
   }
 
-  writeFileSync(CONFIG_PATH, JSON.stringify(nextConfig, null, 2), { encoding: 'utf8', mode: 0o600 });
+  const temporaryPath = `${CONFIG_PATH}.tmp`;
+  try {
+    writeFileSync(temporaryPath, JSON.stringify(nextConfig, null, 2), { encoding: 'utf8', mode: 0o600 });
+    chmodSync(temporaryPath, 0o600);
+    renameSync(temporaryPath, CONFIG_PATH);
+    chmodSync(CONFIG_PATH, 0o600);
+  } catch (err) {
+    try { unlinkSync(temporaryPath); } catch {}
+    throw err;
+  }
   storedConfig = nextConfig;
   return getPublicConfig();
 }
