@@ -2,30 +2,37 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
 import initSqlJs from 'sql.js';
+import type { BindParams, Database } from 'sql.js';
 
 import { DB_PATH, LEGACY_DB_PATH } from './config.js';
+import type { ArchiveEntry, ArchiveEntryInput, ArchivePatch, JobStatus, SequencedArchiveEvent, StoredJob } from './types.js';
 export { DB_PATH, LEGACY_DB_PATH };
 
 const require = createRequire(import.meta.url);
 const wasmPath = require.resolve('sql.js/dist/sql-wasm.wasm');
 const SCHEMA_VERSION = 2;
 
-let databasePromise;
-let writeQueue = Promise.resolve();
+let databasePromise: ReturnType<typeof openDatabase> | undefined;
+let writeQueue: Promise<unknown> = Promise.resolve();
 
-function rows(db: any, sql: string, params: any[] = []): any[] {
+type SqlRow = Record<string, string | number | Uint8Array | null>;
+interface ArchiveRow extends SqlRow { url: string; title: string; meta_description: string; user_message: string | null; summary: string; category: string; keywords: string; notes: string; screenshot_path: string; ai_confidence: number | null; ai_confidence_reason: string; archived_at: string; created_at: string; updated_at: string | null; manually_edited_at: string | null }
+interface JobRow extends SqlRow { id: string; status: string; urls_json: string; url_messages_json: string; total: number; processed: number; succeeded: number; failed: number; skipped: number; sequence: number; error: string | null; created_at: string; updated_at: string; finished_at: string | null }
+interface EventRow extends SqlRow { event_json: string }
+
+function rows<T extends SqlRow>(db: Database, sql: string, params: BindParams = []): T[] {
   const statement = db.prepare(sql);
   try {
     statement.bind(params);
-    const result: any[] = [];
-    while (statement.step()) result.push(statement.getAsObject());
+    const result: T[] = [];
+    while (statement.step()) result.push(statement.getAsObject() as T);
     return result;
   } finally {
     statement.free();
   }
 }
 
-function archiveFromRow(row) {
+function archiveFromRow(row: ArchiveRow): ArchiveEntry {
   return {
     url: row.url,
     title: row.title || '',
@@ -45,14 +52,14 @@ function archiveFromRow(row) {
   };
 }
 
-async function persist(db) {
+async function persist(db: Database) {
   await fs.mkdir(path.dirname(DB_PATH), { recursive: true });
   const temporaryPath = `${DB_PATH}.tmp`;
   await fs.writeFile(temporaryPath, Buffer.from(db.export()), { mode: 0o600 });
   await fs.rename(temporaryPath, DB_PATH);
 }
 
-function migrate(db) {
+function migrate(db: Database) {
   db.run('PRAGMA foreign_keys = ON');
   db.run(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -98,7 +105,7 @@ function migrate(db) {
     );
     CREATE INDEX IF NOT EXISTS archive_job_events_job_idx ON archive_job_events(job_id, sequence);
   `);
-  const columns = new Set(rows(db, 'PRAGMA table_info(archive_entries)').map(column => column.name));
+  const columns = new Set(rows<{ name: string }>(db, 'PRAGMA table_info(archive_entries)').map(column => column.name));
   if (!columns.has('notes')) db.run("ALTER TABLE archive_entries ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
   if (!columns.has('ai_confidence')) db.run('ALTER TABLE archive_entries ADD COLUMN ai_confidence INTEGER');
   if (!columns.has('ai_confidence_reason')) db.run("ALTER TABLE archive_entries ADD COLUMN ai_confidence_reason TEXT NOT NULL DEFAULT ''");
@@ -109,7 +116,7 @@ function migrate(db) {
   );
 }
 
-function insertArchive(db, entry) {
+function insertArchive(db: Database, entry: ArchiveEntryInput) {
   const now = new Date().toISOString();
   db.run(`
     INSERT INTO archive_entries (
@@ -141,7 +148,7 @@ function insertArchive(db, entry) {
     Array.isArray(entry.keywords) ? entry.keywords.join(', ') : (entry.keywords || ''),
     entry.notes || '',
     entry.screenshotPath || '',
-    Number.isInteger(entry.aiConfidence) ? entry.aiConfidence : null,
+    Number.isInteger(entry.aiConfidence) ? entry.aiConfidence! : null,
     entry.aiConfidenceReason || '',
     entry.archivedAt || now,
     entry.createdAt || now,
@@ -150,8 +157,8 @@ function insertArchive(db, entry) {
   ]);
 }
 
-async function importLegacyArchive(db) {
-  const [{ count }] = rows(db, 'SELECT COUNT(*) AS count FROM archive_entries');
+async function importLegacyArchive(db: Database) {
+  const [{ count = 0 } = {}] = rows<{ count: number }>(db, 'SELECT COUNT(*) AS count FROM archive_entries');
   if (count > 0) return false;
 
   try {
@@ -204,7 +211,7 @@ export async function closeDatabase() {
   writeQueue = Promise.resolve();
 }
 
-async function withWrite(operation) {
+async function withWrite<T>(operation: (db: Database) => T | Promise<T>): Promise<T> {
   const db = await initializeDatabase();
   const pending = writeQueue.then(async () => {
     db.run('BEGIN');
@@ -225,23 +232,23 @@ async function withWrite(operation) {
 export async function readDb() {
   const db = await initializeDatabase();
   await writeQueue;
-  return rows(db, 'SELECT * FROM archive_entries ORDER BY created_at DESC').map(archiveFromRow);
+  return rows<ArchiveRow>(db, 'SELECT * FROM archive_entries ORDER BY created_at DESC').map(archiveFromRow);
 }
 
-export async function findArchiveByUrl(url) {
+export async function findArchiveByUrl(url: string): Promise<ArchiveEntry | null> {
   const db = await initializeDatabase();
   await writeQueue;
-  const [row] = rows(db, 'SELECT * FROM archive_entries WHERE url = ?', [url]);
+  const [row] = rows<ArchiveRow>(db, 'SELECT * FROM archive_entries WHERE url = ?', [url]);
   return row ? archiveFromRow(row) : null;
 }
 
-export function upsertArchive(entry) {
+export function upsertArchive(entry: ArchiveEntryInput) {
   return withWrite(db => insertArchive(db, entry));
 }
 
-export function updateArchive(url, patch) {
+export function updateArchive(url: string, patch: Partial<ArchivePatch>) {
   return withWrite(db => {
-    const [row] = rows(db, 'SELECT * FROM archive_entries WHERE url = ?', [url]);
+    const [row] = rows<ArchiveRow>(db, 'SELECT * FROM archive_entries WHERE url = ?', [url]);
     if (!row) return null;
     const current = archiveFromRow(row);
     const updated = {
@@ -251,22 +258,22 @@ export function updateArchive(url, patch) {
       manuallyEditedAt: new Date().toISOString(),
     };
     insertArchive(db, updated);
-    const [saved] = rows(db, 'SELECT * FROM archive_entries WHERE url = ?', [url]);
+    const [saved] = rows<ArchiveRow>(db, 'SELECT * FROM archive_entries WHERE url = ?', [url]);
     return archiveFromRow(saved);
   });
 }
 
-export function writeDb(entries) {
+export function writeDb(entries: ArchiveEntryInput[]) {
   return withWrite(db => {
     db.run('DELETE FROM archive_entries');
     for (const entry of entries) insertArchive(db, entry);
   });
 }
 
-export function deleteArchives(urls) {
+export function deleteArchives(urls: string[]) {
   return withWrite(db => {
     const unique = [...new Set(urls)];
-    const found = unique.flatMap(url => rows(db, 'SELECT * FROM archive_entries WHERE url = ?', [url]));
+    const found = unique.flatMap(url => rows<ArchiveRow>(db, 'SELECT * FROM archive_entries WHERE url = ?', [url]));
     for (const url of unique) db.run('DELETE FROM archive_entries WHERE url = ?', [url]);
     return found.map(archiveFromRow);
   });
@@ -281,7 +288,7 @@ export async function exportArchive() {
   };
 }
 
-export async function importArchive(entries, { replace = false } = {}) {
+export async function importArchive(entries: ArchiveEntryInput[], { replace = false } = {}) {
   if (!Array.isArray(entries)) throw new TypeError('Backup entries must be an array.');
   return withWrite(db => {
     if (replace) db.run('DELETE FROM archive_entries');
@@ -293,14 +300,14 @@ export async function importArchive(entries, { replace = false } = {}) {
   });
 }
 
-export async function listStoredJobs() {
+export async function listStoredJobs(): Promise<StoredJob[]> {
   const db = await initializeDatabase();
   await writeQueue;
-  return rows(db, 'SELECT * FROM archive_jobs ORDER BY created_at').map(row => ({
+  return rows<JobRow>(db, 'SELECT * FROM archive_jobs ORDER BY created_at').map(row => ({
     id: row.id,
-    status: row.status,
-    urls: JSON.parse(row.urls_json),
-    urlMessages: JSON.parse(row.url_messages_json),
+    status: row.status as JobStatus,
+    urls: JSON.parse(row.urls_json) as string[],
+    urlMessages: JSON.parse(row.url_messages_json) as Record<string, string>,
     total: row.total,
     processed: row.processed,
     succeeded: row.succeeded,
@@ -311,12 +318,12 @@ export async function listStoredJobs() {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     finishedAt: row.finished_at,
-    events: rows(db, 'SELECT event_json FROM archive_job_events WHERE job_id = ? ORDER BY sequence', [row.id])
-      .map(eventRow => JSON.parse(eventRow.event_json)),
+    events: rows<EventRow>(db, 'SELECT event_json FROM archive_job_events WHERE job_id = ? ORDER BY sequence', [row.id])
+      .map(eventRow => JSON.parse(eventRow.event_json) as SequencedArchiveEvent),
   }));
 }
 
-export function saveStoredJob(job) {
+export function saveStoredJob(job: StoredJob) {
   return withWrite(db => {
     db.run(`
       INSERT INTO archive_jobs (
@@ -347,7 +354,7 @@ export function saveStoredJob(job) {
   });
 }
 
-export function partitionEntriesByUrl(entries, urls) {
+export function partitionEntriesByUrl(entries: ArchiveEntry[], urls: string[]) {
   const requested = new Set(urls);
   return {
     removed: entries.filter(entry => requested.has(entry.url)),

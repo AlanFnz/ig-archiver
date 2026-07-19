@@ -2,15 +2,45 @@ import crypto from 'crypto';
 
 import { listStoredJobs, saveStoredJob } from './db.js';
 import { logger } from './logger.js';
+import type { ArchiveEvent, ArchiveRunner, JobStatus, JobStore, SequencedArchiveEvent, StoredJob } from './types.js';
 
-const ACTIVE_STATUSES = new Set(['queued', 'running', 'paused', 'cancelling']);
-const TERMINAL_STATUSES = new Set(['completed', 'cancelled', 'failed']);
+const ACTIVE_STATUSES = new Set<JobStatus>(['queued', 'running', 'paused', 'cancelling']);
+const TERMINAL_STATUSES = new Set<JobStatus>(['completed', 'cancelled', 'failed']);
 const TERMINAL_EVENT_TYPES = new Set(['done', 'error', 'skipped']);
 
-class ArchiveJob {
-  [key: string]: any;
+interface JobOptions {
+  urls?: string[];
+  urlMessages?: Record<string, string>;
+  runner: ArchiveRunner;
+  store: JobStore;
+  restored?: StoredJob | null;
+}
 
-  constructor({ urls = [], urlMessages = {}, runner, store, restored = null }: any) {
+class ArchiveJob {
+  id: string;
+  urls: string[];
+  urlMessages: Record<string, string>;
+  runner: ArchiveRunner;
+  store: JobStore;
+  status: JobStatus;
+  total: number;
+  processed: number;
+  succeeded: number;
+  failed: number;
+  skipped: number;
+  events: SequencedArchiveEvent[];
+  sequence: number;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt: string | null;
+  pauseRequested: boolean;
+  cancelRequested: boolean;
+  waiters: Array<() => void>;
+  persistence: Promise<unknown>;
+  runPromise?: Promise<void>;
+
+  constructor({ urls = [], urlMessages = {}, runner, store, restored = null }: JobOptions) {
     this.id = restored?.id || crypto.randomUUID();
     this.urls = restored?.urls || urls;
     this.urlMessages = restored?.urlMessages || urlMessages;
@@ -80,7 +110,7 @@ class ArchiveJob {
     }
   }
 
-  async recordEvent(event) {
+  async recordEvent(event: ArchiveEvent) {
     const sequenced = { ...event, sequence: ++this.sequence, at: new Date().toISOString() };
     this.events.push(sequenced);
     if (this.events.length > 600) this.events.shift();
@@ -128,7 +158,7 @@ class ArchiveJob {
 
   async waitUntilRunnable() {
     if (!this.pauseRequested || this.cancelRequested) return;
-    await new Promise(resolve => this.waiters.push(resolve));
+    await new Promise<void>(resolve => this.waiters.push(resolve));
   }
 
   resolveWaiters() {
@@ -136,13 +166,13 @@ class ArchiveJob {
     waiters.forEach(resolve => resolve());
   }
 
-  async setStatus(status) {
+  async setStatus(status: JobStatus) {
     this.status = status;
     this.updatedAt = new Date().toISOString();
     await this.persist();
   }
 
-  toStored() {
+  toStored(): StoredJob {
     return {
       id: this.id,
       urls: this.urls,
@@ -180,8 +210,8 @@ class ArchiveJob {
   }
 }
 
-export function createJobManager({ runner, store = { listStoredJobs, saveStoredJob } }) {
-  const jobs = new Map();
+export function createJobManager({ runner, store = { listStoredJobs, saveStoredJob } }: { runner: ArchiveRunner; store?: JobStore }) {
+  const jobs = new Map<string, ArchiveJob>();
 
   return {
     async init() {
@@ -199,7 +229,7 @@ export function createJobManager({ runner, store = { listStoredJobs, saveStoredJ
       return jobs.size;
     },
 
-    async create({ urls, urlMessages }) {
+    async create({ urls, urlMessages = {} }: { urls: string[]; urlMessages?: Record<string, string> }) {
       const activeJob = [...jobs.values()].find(job => ACTIVE_STATUSES.has(job.status));
       if (activeJob) {
         const err = new Error('Another archive job is already active.') as Error & { code: string; job: ArchiveJob };
@@ -215,7 +245,7 @@ export function createJobManager({ runner, store = { listStoredJobs, saveStoredJ
       return job;
     },
 
-    get(id) {
+    get(id: string) {
       return jobs.get(id) || null;
     },
 
@@ -223,7 +253,7 @@ export function createJobManager({ runner, store = { listStoredJobs, saveStoredJ
       return [...jobs.values()].some(job => ACTIVE_STATUSES.has(job.status));
     },
 
-    isTerminal(status) {
+    isTerminal(status: JobStatus) {
       return TERMINAL_STATUSES.has(status);
     },
   };

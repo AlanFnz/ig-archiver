@@ -6,7 +6,7 @@
     "rootDir": ".",
     "outDir": "dist",
     "strict": true,
-    "noImplicitAny": false,
+    "noImplicitAny": true,
     "useUnknownInCatchVariables": false,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,

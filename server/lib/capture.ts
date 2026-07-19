@@ -1,10 +1,11 @@
 import crypto from 'crypto';
 import path from 'path';
+import type { Browser } from 'playwright';
 
 import { SCREENSHOTS, SESSION_FILE, getConfig } from './config.js';
 export { SCREENSHOTS };
 
-function instagramEmbedUrl(url) {
+function instagramEmbedUrl(url: string) {
   const parsed = new URL(url);
   parsed.pathname = `${parsed.pathname.replace(/\/+$/, '')}/embed/`;
   parsed.search = '';
@@ -20,7 +21,7 @@ function instagramEmbedUrl(url) {
  * @param {import('playwright').Browser} browser
  * @returns {{ screenshotPath: string, absoluteScreenshotPath: string, title: string, description: string, caption: string }}
  */
-export async function capturePageInfo(browser, url) {
+export async function capturePageInfo(browser: Browser, url: string) {
   const config = getConfig();
   const context = await browser.newContext({
     viewport: { width: config.viewportW, height: config.viewportH },
@@ -91,7 +92,7 @@ export async function capturePageInfo(browser, url) {
 
     const title = await page.title().catch(() => '');
     const metaDesc = await page
-      .$eval('meta[name="description"]', el => el.getAttribute('content') ?? '')
+      .$eval('meta[name="description"]', (el: Element) => el.getAttribute('content') ?? '')
       .catch(() => '');
 
     // extract visible caption text — tries selectors from most to least specific

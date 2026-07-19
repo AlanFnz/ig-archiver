@@ -9,7 +9,7 @@ import { getConfig } from './config.js';
  *
  * @returns {{ summary: string, category: string, keywords: string, aiConfidence: number|null, aiConfidenceReason: string }}
  */
-export async function summarize(url, title, caption, description, absoluteScreenshotPath, userMessage) {
+export async function summarize(url: string, title: string, caption: string, description: string, absoluteScreenshotPath: string, userMessage?: string) {
   const config = getConfig();
   const categories = config.categories;
 
@@ -79,7 +79,7 @@ Respond with only the raw JSON object, no markdown fences.`;
     : '';
 
   const validParts = typeof parsed.category === 'string'
-    ? parsed.category.split(',').map(c => c.trim()).filter(c => categories.includes(c))
+    ? parsed.category.split(',').map((c: string) => c.trim()).filter((c: string) => categories.includes(c))
     : [];
 
   if (validParts.length === 0) {

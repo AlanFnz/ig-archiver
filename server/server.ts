@@ -1,6 +1,8 @@
 // server.js — ig-archiver backend
 import 'dotenv/config';
 import express from 'express';
+import type { NextFunction, Request, Response } from 'express';
+import type { Server } from 'http';
 import cors from 'cors';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -18,12 +20,13 @@ import { runArchiveBatch } from './lib/archive-runner.js';
 import { HOST, PORT, PUBLIC_DIR, SCREENSHOTS, SESSION_FILE, getConfig, getPublicConfig, setConfig } from './lib/config.js';
 import { createJobManager } from './lib/jobs.js';
 import { logger } from './lib/logger.js';
+import type { ArchiveEntry } from './lib/types.js';
 
 // ── express app ───────────────────────────────────────────────────────────────
 
 export const app = express();
 export const jobs = createJobManager({ runner: runArchiveBatch });
-let httpServer;
+let httpServer: Server | undefined;
 
 app.use(cors({
   origin(origin, callback) {
@@ -53,7 +56,7 @@ app.get('/api/archive', async (req, res) => {
   }
 });
 
-const EDITABLE_ARCHIVE_FIELDS = {
+const EDITABLE_ARCHIVE_FIELDS: Record<string, number> = {
   title: 300,
   summary: 1_000,
   category: 100,
@@ -70,7 +73,7 @@ app.patch('/api/archive', async (req, res) => {
   if (fields.some(field => !(field in EDITABLE_ARCHIVE_FIELDS))) {
     return res.status(400).json({ error: 'Only title, summary, category, keywords, and notes may be edited.' });
   }
-  const patch = {};
+  const patch: Record<string, string> = {};
   for (const field of fields) {
     if (typeof candidate[field] !== 'string') return res.status(400).json({ error: `"${field}" must be a string.` });
     patch[field] = candidate[field].trim();
@@ -89,7 +92,7 @@ app.patch('/api/archive', async (req, res) => {
   }
 });
 
-async function removeScreenshots(entries) {
+async function removeScreenshots(entries: ArchiveEntry[]) {
   await Promise.all(entries.map(async entry => {
     if (!entry.screenshotPath) return;
     const screenshotFile = path.join(SCREENSHOTS, path.basename(entry.screenshotPath));
@@ -184,8 +187,9 @@ app.post('/api/config', (req, res) => {
   }
 });
 
-function archiveRequestError(body) {
-  const { urls, urlMessages = {} } = body || {};
+function archiveRequestError(body: unknown) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return 'Request body must be a JSON object.';
+  const { urls, urlMessages = {} } = body as { urls?: unknown; urlMessages?: unknown };
   if (!Array.isArray(urls) || urls.length === 0) {
     return 'Request body must contain a non-empty "urls" array.';
   }
@@ -226,7 +230,9 @@ for (const action of ['pause', 'resume', 'cancel']) {
     const job = jobs.get(req.params.id);
     if (!job) return res.status(404).json({ error: 'Archive job not found.' });
     try {
-      await job[action]();
+      if (action === 'pause') await job.pause();
+      else if (action === 'resume') await job.resume();
+      else await job.cancel();
       res.json(job.serialize());
     } catch (err) {
       res.status(409).json({ error: err.message, job: job.serialize() });
@@ -254,7 +260,7 @@ app.post('/archive', async (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.flushHeaders();
 
-  const send = obj => {
+  const send = (obj: unknown) => {
     if (!res.destroyed && !res.writableEnded) res.write(JSON.stringify(obj) + '\n');
   };
 
@@ -269,7 +275,7 @@ app.post('/archive', async (req, res) => {
   }
 });
 
-app.use((err, _req, res, next) => {
+app.use((err: Error, _req: Request, res: Response, next: NextFunction) => {
   if (res.headersSent) return next(err);
   if (err.message === 'Origin is not allowed.') {
     return res.status(403).json({ error: err.message });
@@ -305,9 +311,10 @@ export async function init() {
   return httpServer;
 }
 
-async function shutdown(signal) {
+async function shutdown(signal: string) {
   logger.info('server.stopping', 'Stopping IG Archiver server.', { signal });
-  if (httpServer) await new Promise(resolve => httpServer.close(resolve));
+  const server = httpServer;
+  if (server) await new Promise<void>(resolve => server.close(() => resolve()));
   await closeDatabase();
 }
 

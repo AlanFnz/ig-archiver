@@ -1,4 +1,4 @@
-import { chromium } from 'playwright';
+import { chromium, type Browser } from 'playwright';
 
 import { capturePageInfo } from './capture.js';
 import { getConfig } from './config.js';
@@ -6,14 +6,15 @@ import { findArchiveByUrl, upsertArchive } from './db.js';
 import { runConcurrent } from './concurrency.js';
 import { logger } from './logger.js';
 import { summarize } from './summarize.js';
+import type { ArchiveBatchOptions, ArchiveEvent } from './types.js';
 
 const DEFAULT_CONTROL = {
   isCancelled: () => false,
   waitUntilRunnable: async () => {},
 };
-const DEFAULT_EVENT_HANDLER = (_event?: unknown) => {};
+const DEFAULT_EVENT_HANDLER = (_event: ArchiveEvent) => {};
 
-function validateInstagramUrl(url) {
+function validateInstagramUrl(url: string) {
   const parsedUrl = new URL(url);
   const validHost = parsedUrl.hostname === 'instagram.com' || parsedUrl.hostname === 'www.instagram.com';
   const validPath = /^\/(?:p|reel)\//.test(parsedUrl.pathname);
@@ -22,13 +23,14 @@ function validateInstagramUrl(url) {
   }
 }
 
-function isRetryable(error) {
-  const message = (error?.message || String(error)).toLocaleLowerCase();
+function isRetryable(error: unknown) {
+  const candidate = error as { message?: string } | null;
+  const message = (candidate?.message || String(error)).toLocaleLowerCase();
   return ['429', 'timeout', 'timed out', 'navigation failed', 'blank page', 'econnreset', 'socket hang up']
     .some(fragment => message.includes(fragment));
 }
 
-function wait(ms) {
+function wait(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
@@ -37,9 +39,9 @@ export async function runArchiveBatch({
   urlMessages = {},
   onEvent = DEFAULT_EVENT_HANDLER,
   control = DEFAULT_CONTROL,
-}) {
+}: ArchiveBatchOptions) {
   const config = getConfig();
-  let browser;
+  let browser: Browser | undefined;
 
   try {
     browser = await chromium.launch({ headless: true });
@@ -68,7 +70,7 @@ export async function runArchiveBatch({
         let lastError;
         for (let attempt = 1; attempt <= config.retryAttempts; attempt++) {
           try {
-            captured = await capturePageInfo(browser, url);
+        captured = await capturePageInfo(browser!, url);
             break;
           } catch (err) {
             lastError = err;

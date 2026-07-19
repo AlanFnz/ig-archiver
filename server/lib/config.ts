@@ -5,12 +5,12 @@ const ROOT = path.resolve(process.env.SERVER_ROOT || process.cwd());
 export const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : ROOT;
 export const PUBLIC_DIR = path.join(ROOT, 'public');
 
-function envInt(name, fallback) {
+function envInt(name: string, fallback: number) {
   const value = Number.parseInt(process.env[name] ?? '', 10);
   return Number.isFinite(value) ? value : fallback;
 }
 
-function boundedEnvInt(name, fallback, min, max) {
+function boundedEnvInt(name: string, fallback: number, min: number, max: number) {
   const value = envInt(name, fallback);
   return value >= min && value <= max ? value : fallback;
 }
@@ -69,6 +69,12 @@ const EDITABLE_KEYS = new Set([
   'openaiApiKey',
 ]);
 
+interface ConfigPatch {
+  concurrency?: number; timeoutMs?: number; viewportW?: number; viewportH?: number;
+  skipExisting?: boolean; retryAttempts?: number; retryBaseMs?: number;
+  categories?: string[]; openaiModel?: string; openaiBaseUrl?: string; openaiApiKey?: string;
+}
+
 function readStoredConfig() {
   if (!existsSync(CONFIG_PATH)) return {};
 
@@ -83,16 +89,17 @@ function readStoredConfig() {
 
 let storedConfig = readStoredConfig();
 
-function assertInteger(value, key, min, max) {
-  if (!Number.isInteger(value) || value < min || value > max) {
+function assertInteger(value: unknown, key: string, min: number, max: number) {
+  if (!Number.isInteger(value) || (value as number) < min || (value as number) > max) {
     throw new TypeError(`${key} must be an integer between ${min} and ${max}.`);
   }
 }
 
-function validatePatch(patch) {
-  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+function validatePatch(value: unknown): ConfigPatch {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new TypeError('Configuration must be a JSON object.');
   }
+  const patch = value as ConfigPatch;
 
   for (const key of Object.keys(patch)) {
     if (!EDITABLE_KEYS.has(key)) throw new TypeError(`Unknown configuration field: ${key}.`);
@@ -112,13 +119,13 @@ function validatePatch(patch) {
     if (!Array.isArray(patch.categories) || patch.categories.length < 1 || patch.categories.length > 50) {
       throw new TypeError('categories must contain between 1 and 50 values.');
     }
-    const cleaned = patch.categories.map(category =>
+    const cleaned = patch.categories.map((category: unknown) =>
       typeof category === 'string' ? category.trim() : '',
     );
-    if (cleaned.some(category => !category || category.length > 40)) {
+    if (cleaned.some((category: string) => !category || category.length > 40)) {
       throw new TypeError('Each category must be a non-empty string of at most 40 characters.');
     }
-    if (new Set(cleaned.map(category => category.toLocaleLowerCase())).size !== cleaned.length) {
+    if (new Set(cleaned.map((category: string) => category.toLocaleLowerCase())).size !== cleaned.length) {
       throw new TypeError('Category names must be unique.');
     }
     patch.categories = cleaned;
@@ -168,11 +175,11 @@ export function getPublicConfig() {
   return { ...config, hasOpenaiApiKey: Boolean(openaiApiKey) };
 }
 
-export function setConfig(newConfig) {
-  const patch = validatePatch({ ...newConfig });
+export function setConfig(newConfig: unknown) {
+  const patch = validatePatch(newConfig);
   const nextConfig = { ...storedConfig, ...patch };
   if ('openaiApiKey' in patch) {
-    const key = patch.openaiApiKey.trim();
+    const key = (patch.openaiApiKey ?? '').trim();
     if (key) nextConfig.openaiApiKey = key;
     else delete nextConfig.openaiApiKey;
   }
