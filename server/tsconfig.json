@@ -13,8 +13,8 @@
     "skipLibCheck": true,
     "sourceMap": true,
     "declaration": true,
-    "types": ["node"]
+    "types": ["node", "vitest/globals"]
   },
-  "include": ["server.ts", "login.ts", "lib/**/*.ts", "scripts/**/*.ts"],
-  "exclude": ["dist", "node_modules", "tests"]
+  "include": ["server.ts", "login.ts", "lib/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["dist", "node_modules"]
 }
