@@ -4,6 +4,7 @@ export interface ScrapeResult {
 }
 
 export interface Platform {
+  isConversationPage(): Promise<boolean>;
   scrollOnce(): Promise<boolean>;
   scrapeLinks(): Promise<ScrapeResult>;
 }

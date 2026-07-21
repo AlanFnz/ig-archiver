@@ -44,11 +44,16 @@ export function App({ platform }: AppProps) {
   const [settingsValue, setSettingsValue] = useState(DEFAULT_SERVER_URL);
   const [settingsError, setSettingsError] = useState('');
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [isConversationPage, setIsConversationPage] = useState<boolean | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<ArchiveJobStatus | null>(null);
   const idRef = useRef(0);
 
   useEffect(() => {
+    platform.isConversationPage()
+      .then(setIsConversationPage)
+      .catch(() => setIsConversationPage(false));
+
     Promise.all([getServerUrl(), getActiveArchiveJob()]).then(([configuredUrl, activeJob]) => {
       const url = activeJob?.serverUrl || configuredUrl;
       setServerUrl(url);
@@ -56,7 +61,7 @@ export function App({ platform }: AppProps) {
       if (activeJob) setActiveJobId(activeJob.id);
       return checkServer(url);
     }).catch(() => setServerOnline(false));
-  }, []);
+  }, [platform]);
 
   useEffect(() => {
     if (!activeJobId) return;
@@ -301,15 +306,21 @@ export function App({ platform }: AppProps) {
           {settingsError && <p className="mt-1.5 text-[10px] text-[#ef7a7a]">{settingsError}</p>}
         </section>
       )}
+      {isConversationPage === false && (
+        <section className="mb-3 rounded-xl border border-[#d9a441]/20 bg-[#d9a441]/8 px-3.5 py-3 text-center" role="status">
+          <p className="text-[11px] font-semibold text-[#e5bd72]">Open an Instagram conversation to scan</p>
+          <p className="mt-1 text-[10px] leading-relaxed text-[#8f8490]">Move to a conversation in Instagram Direct, then reopen IG Archiver.</p>
+        </section>
+      )}
       <button
         type="button"
         onClick={handleLoadHistory}
-        disabled={isActive || historyLoading || serverOnline !== true}
+        disabled={isActive || historyLoading || serverOnline !== true || isConversationPage !== true}
         className="history-button mb-2.5 w-full rounded-xl border border-white/7 bg-white/3 px-4 py-2.5 text-[11px] font-medium text-[#aaaabc] hover:bg-white/6 disabled:cursor-not-allowed disabled:opacity-45"
       >
         {historyLoading ? 'Loading older messages…' : 'Load older messages (experimental)'}
       </button>
-      <ScanButton onClick={handleScan} disabled={isActive || historyLoading || serverOnline !== true} />
+      <ScanButton onClick={handleScan} disabled={isActive || historyLoading || serverOnline !== true || isConversationPage !== true} />
       {showProgress && <ProgressBar processed={state.processed} total={state.total} failed={state.failed} skipped={state.skipped} />}
       {activeJobId && (
         <section className="mt-3 rounded-xl border border-white/7 bg-black/15 p-2.5" aria-label="Archive job controls">

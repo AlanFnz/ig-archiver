@@ -1,7 +1,24 @@
 import type { Platform, ScrapeResult } from './types';
 import { autoScrollOnce, scrapeExternalLinks } from '../lib/scraper';
 
+export function isInstagramConversationUrl(url?: string): boolean {
+  if (!url) return false;
+
+  try {
+    const parsed = new URL(url);
+    const isInstagram = parsed.hostname === 'instagram.com' || parsed.hostname === 'www.instagram.com';
+    return isInstagram && /^\/direct\/t\/[^/]+\/?$/.test(parsed.pathname);
+  } catch {
+    return false;
+  }
+}
+
 export const chromePlatform: Platform = {
+  async isConversationPage(): Promise<boolean> {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    return isInstagramConversationUrl(tab?.url);
+  },
+
   async scrollOnce(): Promise<boolean> {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) throw new Error('No active tab found.');
