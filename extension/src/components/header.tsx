@@ -16,7 +16,7 @@ export function Header({ serverOnline, onSettings, settingsOpen }: HeaderProps) 
         </div>
         <div>
           <h1 className="display-type text-[15px] font-semibold tracking-[-0.01em] text-[#f4f2ff]">IG Archiver</h1>
-          <p className="text-[9px] uppercase tracking-[0.16em] text-[#69697d]">Personal capture cloud</p>
+          <p className="text-[9px] uppercase tracking-[0.13em] text-[#69697d]">Archive posts from Instagram DMs</p>
         </div>
       </div>
       <div className="flex items-center gap-2">
