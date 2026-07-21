@@ -1,3 +1,15 @@
+export const ARCHIVE_INTENTS = ['learn', 'make', 'reference', 'dismiss'] as const;
+export type ArchiveIntent = typeof ARCHIVE_INTENTS[number];
+
+export const WORKFLOW_STATES = ['inbox', 'up_next', 'in_progress', 'practiced', 'applied', 'published', 'cold_storage'] as const;
+export type WorkflowState = typeof WORKFLOW_STATES[number];
+
+export const DIFFICULTIES = ['easy', 'intermediate', 'advanced'] as const;
+export type Difficulty = typeof DIFFICULTIES[number];
+
+export const TAG_DIMENSIONS = ['medium', 'tool', 'skill'] as const;
+export type TagDimension = typeof TAG_DIMENSIONS[number];
+
 export interface ArchiveEntry {
   url: string;
   title: string;
@@ -14,10 +26,25 @@ export interface ArchiveEntry {
   createdAt: string;
   updatedAt?: string;
   manuallyEditedAt?: string;
+  intent: ArchiveIntent | null;
+  workflowState: WorkflowState;
+  difficulty: Difficulty | null;
+  estimatedMinutes: number | null;
+  priority: number;
+  nextAction: string;
+  reviewedAt?: string;
+  stateChangedAt: string;
+  mediums: string[];
+  tools: string[];
+  skills: string[];
 }
 export type ArchiveEntryInput = Pick<ArchiveEntry, 'url'> & Partial<Omit<ArchiveEntry, 'url'>>;
 
-export type ArchivePatch = Pick<ArchiveEntry, 'title' | 'summary' | 'category' | 'keywords' | 'notes'>;
+export type ArchivePatch = Pick<ArchiveEntry,
+  | 'title' | 'summary' | 'category' | 'keywords' | 'notes'
+  | 'intent' | 'workflowState' | 'difficulty' | 'estimatedMinutes'
+  | 'priority' | 'nextAction' | 'mediums' | 'tools' | 'skills'
+>;
 
 export type ArchiveEvent =
   | { type: 'progress'; index: number; total: number; url: string }
