@@ -41,7 +41,7 @@
       background-attachment: fixed;
     }
 
-    button, input, textarea { font: inherit; }
+    button, input, textarea, select { font: inherit; }
     button { color: inherit; }
     :focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
 
@@ -67,6 +67,13 @@
     .button svg { width: 15px; }
     .button-primary { border-color: transparent; background: linear-gradient(125deg, #7657a5, #3f86d1); box-shadow: 0 10px 25px rgb(63 108 190 / 20%); }
     .button-danger { color: #ffb1b1; }
+
+    .workflow-nav { display: flex; gap: 8px; margin: -14px 0 22px 55px; overflow-x: auto; scrollbar-width: none; }
+    .workflow-nav::-webkit-scrollbar { display: none; }
+    .workflow-tab { flex: 0 0 auto; padding: 8px 12px; border: 1px solid transparent; border-radius: 10px; color: var(--muted); background: transparent; cursor: pointer; font-size: .72rem; }
+    .workflow-tab:hover { color: var(--text); background: rgb(255 255 255 / 4%); }
+    .workflow-tab.active { border-color: rgb(93 166 237 / 20%); color: white; background: rgb(93 166 237 / 10%); }
+    .workflow-tab span { margin-left: 5px; color: var(--subtle); font-variant-numeric: tabular-nums; }
 
     .controls {
       position: sticky; z-index: 10; top: 14px; display: grid; grid-template-columns: minmax(220px, 1fr) auto; gap: 14px;
@@ -111,6 +118,8 @@
     .card-content { padding: 17px; }
     .card-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
     .badge { overflow: hidden; max-width: calc(100% - 35px); padding: 5px 9px; border-radius: 8px; color: #c5b1ea; background: rgb(156 123 209 / 13%); font-size: .64rem; font-weight: 600; letter-spacing: .08em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+    .workflow-badge { color: #9dc8ee; background: rgb(91 159 219 / 10%); }
+    .next-action { margin: 12px 0 0; color: #d4d4e0; font-size: .73rem; line-height: 1.5; }
     .delete { display: grid; width: 29px; height: 29px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 8px; color: var(--subtle); background: transparent; cursor: pointer; transition: 160ms; }
     .delete:hover { color: var(--red); background: rgb(239 119 119 / 10%); }
     .delete svg { width: 14px; }
@@ -155,7 +164,7 @@
     .field { display: grid; gap: 6px; }
     .field.full { grid-column: 1 / -1; }
     .field label { color: var(--muted); font-size: .7rem; font-weight: 500; }
-    .field input, .field textarea { border-radius: 10px; padding: 10px 11px; font-size: .78rem; }
+    .field input, .field textarea, .field select { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 10px 11px; color: var(--text); background: rgb(5 5 9 / 45%); font-size: .78rem; }
     .field textarea { min-height: 110px; resize: vertical; line-height: 1.5; }
     .toggle-field { display: flex; grid-column: 1 / -1; align-items: flex-start; gap: 10px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 10px; background: rgb(255 255 255 / 2%); cursor: pointer; }
     .toggle-field input { width: 16px; height: 16px; flex: 0 0 auto; margin: 1px 0 0; accent-color: var(--blue); }
@@ -175,6 +184,7 @@
     @media (max-width: 760px) {
       .shell { width: min(100% - 24px, 1240px); padding-top: 24px; }
       .topbar { align-items: flex-start; margin-bottom: 22px; }
+      .workflow-nav { margin: -8px 0 18px; }
       .count-pill { display: none; }
       .controls { position: static; grid-template-columns: 1fr; }
       .filters { max-width: none; min-height: 38px; }
@@ -230,6 +240,8 @@
       </div>
     </header>
 
+    <nav class="workflow-nav" id="workflow-nav" aria-label="Creative workflow"></nav>
+
     <section class="controls" aria-label="Archive filters">
       <label class="search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
@@ -242,6 +254,9 @@
       <div class="bulk-summary"><strong id="selected-count">0</strong> selected</div>
       <div class="bulk-actions">
         <button class="button" id="select-visible" type="button">Select visible</button>
+        <button class="button" id="mark-reference" type="button" disabled>Reference</button>
+        <button class="button" id="move-cold" type="button" disabled>Cold storage</button>
+        <button class="button" id="move-inbox" type="button" disabled>Inbox</button>
         <button class="button button-danger" id="delete-selected" type="button" disabled>Delete selected</button>
         <button class="button" id="cancel-selection" type="button">Cancel</button>
       </div>
@@ -256,6 +271,8 @@
       <div class="detail-image" id="detail-image"></div>
       <div class="detail-copy">
         <div class="detail-section"><h3>Category</h3><p id="detail-category"></p></div>
+        <div class="detail-section"><h3>Creative workflow</h3><p id="detail-workflow"></p></div>
+        <div class="detail-section" id="detail-next-action-wrap"><h3>Next action</h3><p id="detail-next-action"></p></div>
         <div class="detail-section" id="detail-intent-wrap"><h3>Saved with</h3><p id="detail-intent"></p></div>
         <div class="detail-section"><h3 id="detail-summary-heading">AI summary</h3><p id="detail-summary"></p></div>
         <div class="detail-section" id="detail-confidence-wrap"><h3>AI confidence at generation</h3><p id="detail-confidence"></p></div>
@@ -273,6 +290,17 @@
     <form id="edit-form">
       <div class="settings-form">
         <div class="field"><label for="edit-entry-title">Title</label><input id="edit-entry-title" maxlength="300"></div>
+        <div class="field-grid">
+          <div class="field"><label for="edit-intent">Intent</label><select id="edit-intent"><option value="">Unreviewed</option><option value="learn">Learn</option><option value="make">Make</option><option value="reference">Reference</option><option value="dismiss">Dismiss</option></select></div>
+          <div class="field"><label for="edit-workflow-state">Workflow state</label><select id="edit-workflow-state"><option value="inbox">Inbox</option><option value="up_next">Up Next</option><option value="in_progress">In Progress</option><option value="practiced">Practiced</option><option value="applied">Applied</option><option value="published">Published</option><option value="cold_storage">Cold Storage</option></select></div>
+          <div class="field"><label for="edit-difficulty">Difficulty</label><select id="edit-difficulty"><option value="">Not set</option><option value="easy">Easy</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></div>
+          <div class="field"><label for="edit-duration">Estimated minutes</label><input id="edit-duration" type="number" min="1" max="1440" placeholder="30"></div>
+          <div class="field"><label for="edit-priority">Priority (0–5)</label><input id="edit-priority" type="number" min="0" max="5" required></div>
+          <div class="field"><label for="edit-tools">Tools</label><input id="edit-tools" maxlength="500" placeholder="Photoshop, After Effects"></div>
+          <div class="field"><label for="edit-mediums">Mediums</label><input id="edit-mediums" maxlength="500" placeholder="Visual art, Motion"></div>
+          <div class="field"><label for="edit-skills">Skills</label><input id="edit-skills" maxlength="500" placeholder="Texture, Kinetic type"></div>
+        </div>
+        <div class="field"><label for="edit-next-action">Next physical action</label><input id="edit-next-action" maxlength="500" placeholder="Open Photoshop and recreate only the texture…"></div>
         <div class="field-grid">
           <div class="field"><label for="edit-category">Category</label><input id="edit-category" maxlength="100" list="category-options" required><datalist id="category-options"></datalist></div>
           <div class="field"><label for="edit-keywords">Keywords</label><input id="edit-keywords" maxlength="300" placeholder="comma, separated"></div>
@@ -324,9 +352,10 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script>
-    const state = { entries: [], config: null, category: 'All', query: '', selecting: false, selected: new Set(), activeEntry: null };
+    const state = { entries: [], config: null, view: 'inbox', category: 'All', query: '', selecting: false, selected: new Set(), activeEntry: null };
     const grid = document.querySelector('#grid');
     const filters = document.querySelector('#filters');
+    const workflowNav = document.querySelector('#workflow-nav');
     const count = document.querySelector('#filtered-count');
     const countLabel = document.querySelector('#count-label');
     const detailDialog = document.querySelector('#detail-dialog');
@@ -381,6 +410,25 @@
       return typeof value === 'string' ? value.split(',').map(item => item.trim()).filter(Boolean) : [];
     }
 
+    function commaValues(value) {
+      return typeof value === 'string' ? value.split(',').map(item => item.trim()).filter(Boolean) : [];
+    }
+
+    function workflowLabel(value) {
+      return ({ inbox: 'Inbox', up_next: 'Up Next', in_progress: 'In Progress', practiced: 'Practiced', applied: 'Applied', published: 'Published', cold_storage: 'Cold Storage' })[value] || 'Inbox';
+    }
+
+    function intentLabel(value) {
+      return ({ learn: 'Learn', make: 'Make', reference: 'Reference', dismiss: 'Dismiss' })[value] || 'Unreviewed';
+    }
+
+    function entryInView(entry, view = state.view) {
+      if (view === 'inbox') return !entry.reviewedAt && entry.workflowState === 'inbox';
+      if (view === 'up_next') return entry.workflowState === 'up_next' || entry.workflowState === 'in_progress';
+      if (view === 'cold_storage') return entry.workflowState === 'cold_storage';
+      return Boolean(entry.reviewedAt) && !['up_next', 'in_progress', 'cold_storage'].includes(entry.workflowState);
+    }
+
     function appendTags(container, values) {
       container.replaceChildren(...values.map(value => {
         const tag = document.createElement('span');
@@ -421,12 +469,40 @@
     }
 
     function filteredEntries() {
-      return state.entries.filter(entry => {
+      const entries = state.entries.filter(entry => {
+        if (!entryInView(entry)) return false;
         const matchesCategory = state.category === 'All' || categoryNames(entry.category).includes(state.category);
-        const haystack = [entry.title, entry.summary, entry.metaDescription, entry.userMessage, entry.keywords, entry.notes]
+        const haystack = [entry.title, entry.summary, entry.metaDescription, entry.userMessage, entry.keywords, entry.notes, entry.nextAction, ...(entry.mediums || []), ...(entry.tools || []), ...(entry.skills || [])]
           .filter(value => typeof value === 'string').join(' ').toLocaleLowerCase();
         return matchesCategory && (!state.query || haystack.includes(state.query));
       });
+      if (state.view === 'up_next') {
+        entries.sort((a, b) => {
+          if (a.workflowState !== b.workflowState) return a.workflowState === 'in_progress' ? -1 : 1;
+          return (b.priority || 0) - (a.priority || 0)
+            || new Date(a.stateChangedAt || 0) - new Date(b.stateChangedAt || 0);
+        });
+      }
+      return entries;
+    }
+
+    function renderWorkflowNav() {
+      const views = [
+        ['inbox', 'Inbox'], ['up_next', 'Up Next'], ['library', 'Library'], ['cold_storage', 'Cold Storage'],
+      ];
+      workflowNav.replaceChildren(...views.map(([value, label]) => {
+        const button = document.createElement('button');
+        const total = state.entries.filter(entry => entryInView(entry, value)).length;
+        button.type = 'button';
+        button.className = `workflow-tab${state.view === value ? ' active' : ''}`;
+        button.setAttribute('aria-pressed', String(state.view === value));
+        button.append(document.createTextNode(label));
+        const badge = document.createElement('span'); badge.textContent = String(total); button.append(badge);
+        button.addEventListener('click', () => {
+          state.view = value; state.category = 'All'; setSelectionMode(false); renderWorkflowNav(); renderFilters(); renderGrid();
+        });
+        return button;
+      }));
     }
 
     function renderFilters() {
@@ -460,10 +536,17 @@
     function renderGrid() {
       const entries = filteredEntries();
       count.textContent = String(entries.length);
-      countLabel.textContent = entries.length === state.entries.length ? (entries.length === 1 ? 'item' : 'items') : `of ${state.entries.length}`;
+      const viewTotal = state.entries.filter(entry => entryInView(entry)).length;
+      countLabel.textContent = entries.length === viewTotal ? (entries.length === 1 ? 'item' : 'items') : `of ${viewTotal}`;
       renderBulkActions();
       if (!entries.length) {
-        renderEmpty(state.entries.length ? 'No matching captures' : 'Your archive is ready', state.entries.length ? 'Try another search or category.' : 'Captured Instagram posts will appear here.');
+        const emptyCopy = {
+          inbox: ['Inbox cleared', 'New captures and unreviewed backlog items will appear here.'],
+          up_next: ['Nothing queued', 'Choose a Learn or Make item and move it to Up Next.'],
+          library: ['No reviewed work yet', 'References and completed creative work will appear here.'],
+          cold_storage: ['Cold Storage is empty', 'Inactive references remain searchable here without demanding attention.'],
+        }[state.view];
+        renderEmpty(state.entries.length ? emptyCopy[0] : 'Your archive is ready', state.entries.length ? emptyCopy[1] : 'Captured Instagram posts will appear here.');
         return;
       }
       grid.replaceChildren(...entries.map((entry, index) => {
@@ -494,7 +577,8 @@
         row.className = 'card-row';
         const badge = document.createElement('span');
         badge.className = 'badge';
-        badge.textContent = entry.category || 'Uncategorized';
+        badge.textContent = entry.workflowState === 'inbox' ? intentLabel(entry.intent) : workflowLabel(entry.workflowState);
+        if (entry.workflowState !== 'inbox') badge.classList.add('workflow-badge');
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.className = 'delete';
@@ -511,6 +595,12 @@
         summary.className = 'summary';
         summary.textContent = entry.summary || 'No summary available.';
         content.append(row, title, summary);
+        if (entry.nextAction) {
+          const action = document.createElement('p');
+          action.className = 'next-action';
+          action.textContent = `Next: ${entry.nextAction}`;
+          content.append(action);
+        }
         const provenance = document.createElement('div');
         provenance.className = 'provenance';
         if (Number.isInteger(entry.aiConfidence)) {
@@ -534,7 +624,7 @@
         }
         const tagList = document.createElement('div');
         tagList.className = 'tags';
-        appendTags(tagList, keywords(entry.keywords));
+        appendTags(tagList, [entry.category, ...(entry.tools || []), ...(entry.skills || []), ...keywords(entry.keywords)].filter(Boolean));
         content.append(tagList);
         card.append(media, content);
         return card;
@@ -562,9 +652,27 @@
       const selectedVisible = visible.filter(entry => state.selected.has(entry.url)).length;
       document.querySelector('#selected-count').textContent = String(state.selected.size);
       document.querySelector('#delete-selected').disabled = state.selected.size === 0;
+      document.querySelector('#mark-reference').disabled = state.selected.size === 0;
+      document.querySelector('#move-cold').disabled = state.selected.size === 0;
+      document.querySelector('#move-inbox').disabled = state.selected.size === 0;
       document.querySelector('#select-visible').textContent = visible.length > 0 && selectedVisible === visible.length
         ? 'Clear visible'
         : `Select visible (${visible.length})`;
+    }
+
+    async function bulkTriage(patch, successMessage) {
+      const urls = Array.from(state.selected);
+      if (!urls.length) return;
+      try {
+        const result = await api('/api/archive/bulk', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ urls, patch }),
+        });
+        const updated = new Map(result.entries.map(entry => [entry.url, entry]));
+        state.entries = state.entries.map(entry => updated.get(entry.url) || entry);
+        setSelectionMode(false);
+        renderWorkflowNav(); renderFilters(); renderGrid();
+        showToast(`${result.updated} ${successMessage}`);
+      } catch (err) { showToast(err.message, true); }
     }
 
     function toggleVisibleSelection() {
@@ -601,6 +709,7 @@
         const removed = new Set(urls);
         state.entries = state.entries.filter(entry => !removed.has(entry.url));
         setSelectionMode(false);
+        renderWorkflowNav();
         renderFilters();
         showToast(`${deleted} capture${deleted === 1 ? '' : 's'} deleted.`);
       } catch (err) { showToast(err.message, true); }
@@ -610,6 +719,10 @@
       state.activeEntry = entry;
       document.querySelector('#detail-title').textContent = entry.title || 'Archive details';
       document.querySelector('#detail-category').textContent = entry.category || 'Uncategorized';
+      document.querySelector('#detail-workflow').textContent = `${intentLabel(entry.intent)} · ${workflowLabel(entry.workflowState)}${entry.estimatedMinutes ? ` · ${entry.estimatedMinutes} min` : ''}${entry.difficulty ? ` · ${entry.difficulty}` : ''}`;
+      const nextActionWrap = document.querySelector('#detail-next-action-wrap');
+      nextActionWrap.hidden = !entry.nextAction;
+      document.querySelector('#detail-next-action').textContent = entry.nextAction || '';
       document.querySelector('#detail-summary').textContent = entry.summary || 'No summary available.';
       document.querySelector('#detail-summary-heading').textContent = entry.manuallyEditedAt ? 'Summary · manually edited' : 'AI summary';
       const confidenceWrap = document.querySelector('#detail-confidence-wrap');
@@ -626,7 +739,7 @@
       const notesWrap = document.querySelector('#detail-notes-wrap');
       notesWrap.hidden = !entry.notes;
       document.querySelector('#detail-notes').textContent = entry.notes || '';
-      appendTags(document.querySelector('#detail-tags'), keywords(entry.keywords));
+      appendTags(document.querySelector('#detail-tags'), [...(entry.mediums || []), ...(entry.tools || []), ...(entry.skills || []), ...keywords(entry.keywords)]);
       const image = makeImage(entry);
       document.querySelector('#detail-image').replaceChildren(...image.childNodes);
       const link = document.querySelector('#detail-link');
@@ -643,6 +756,15 @@
       const entry = state.activeEntry;
       if (!entry) return;
       document.querySelector('#edit-entry-title').value = entry.title || '';
+      document.querySelector('#edit-intent').value = entry.intent || '';
+      document.querySelector('#edit-workflow-state').value = entry.workflowState || 'inbox';
+      document.querySelector('#edit-difficulty').value = entry.difficulty || '';
+      document.querySelector('#edit-duration').value = entry.estimatedMinutes || '';
+      document.querySelector('#edit-priority').value = entry.priority || 0;
+      document.querySelector('#edit-next-action').value = entry.nextAction || '';
+      document.querySelector('#edit-mediums').value = (entry.mediums || []).join(', ');
+      document.querySelector('#edit-tools').value = (entry.tools || []).join(', ');
+      document.querySelector('#edit-skills').value = (entry.skills || []).join(', ');
       document.querySelector('#edit-category').value = entry.category || '';
       document.querySelector('#edit-keywords').value = entry.keywords || '';
       document.querySelector('#edit-summary').value = entry.summary || '';
@@ -664,6 +786,15 @@
         keywords: document.querySelector('#edit-keywords').value,
         summary: document.querySelector('#edit-summary').value,
         notes: document.querySelector('#edit-notes').value,
+        intent: document.querySelector('#edit-intent').value || null,
+        workflowState: document.querySelector('#edit-workflow-state').value,
+        difficulty: document.querySelector('#edit-difficulty').value || null,
+        estimatedMinutes: document.querySelector('#edit-duration').value ? Number(document.querySelector('#edit-duration').value) : null,
+        priority: Number(document.querySelector('#edit-priority').value),
+        nextAction: document.querySelector('#edit-next-action').value,
+        mediums: commaValues(document.querySelector('#edit-mediums').value),
+        tools: commaValues(document.querySelector('#edit-tools').value),
+        skills: commaValues(document.querySelector('#edit-skills').value),
       };
       try {
         const result = await api('/api/archive', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -671,6 +802,7 @@
         state.activeEntry = result.entry;
         editDialog.close();
         renderFilters();
+        renderWorkflowNav();
         renderGrid();
         openDetail(result.entry);
         showToast('Archive details updated.');
@@ -686,7 +818,9 @@
       try {
         await api('/api/archive', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: entry.url }) });
         state.entries = state.entries.filter(item => item.url !== entry.url);
+        renderWorkflowNav();
         renderFilters();
+        renderWorkflowNav();
         renderGrid();
         showToast('Capture deleted.');
       } catch (err) { showToast(err.message, true); }
@@ -768,6 +902,8 @@
         const [entries, config] = await Promise.all([api('/api/archive'), api('/api/config')]);
         state.entries = Array.isArray(entries) ? entries.sort((a, b) => new Date(b.archivedAt || 0) - new Date(a.archivedAt || 0)) : [];
         state.config = config;
+        if (state.entries.some(entry => entry.workflowState === 'in_progress')) state.view = 'up_next';
+        renderWorkflowNav();
         renderFilters();
         renderGrid();
       } catch (err) { renderEmpty('Could not load the archive', err.message); }
@@ -780,6 +916,9 @@
     selectButton.addEventListener('click', () => setSelectionMode(!state.selecting));
     document.querySelector('#select-visible').addEventListener('click', toggleVisibleSelection);
     document.querySelector('#delete-selected').addEventListener('click', deleteSelected);
+    document.querySelector('#mark-reference').addEventListener('click', () => bulkTriage({ intent: 'reference', workflowState: 'inbox' }, 'capture(s) marked as references.'));
+    document.querySelector('#move-cold').addEventListener('click', () => bulkTriage({ intent: 'dismiss', workflowState: 'cold_storage' }, 'capture(s) moved to Cold Storage.'));
+    document.querySelector('#move-inbox').addEventListener('click', () => bulkTriage({ intent: null, workflowState: 'inbox' }, 'capture(s) restored to Inbox.'));
     document.querySelector('#cancel-selection').addEventListener('click', () => setSelectionMode(false));
     document.querySelector('#settings-button').addEventListener('click', () => { fillSettings(); settingsDialog.showModal(); });
     document.querySelector('#settings-form').addEventListener('submit', saveSettings);
