@@ -12,15 +12,18 @@ import {
   closeDatabase,
   deleteArchives,
   exportArchive,
+  getQueueCounts,
   importArchive,
   readDb,
   updateArchive,
+  updateArchives,
+  ArchiveQueueConflictError,
 } from './lib/db.js';
 import { runArchiveBatch } from './lib/archive-runner.js';
 import { HOST, PORT, PUBLIC_DIR, SCREENSHOTS, SESSION_FILE, getConfig, getPublicConfig, setConfig } from './lib/config.js';
 import { createJobManager } from './lib/jobs.js';
 import { logger } from './lib/logger.js';
-import type { ArchiveEntry } from './lib/types.js';
+import { ARCHIVE_INTENTS, DIFFICULTIES, WORKFLOW_STATES, type ArchiveEntry, type ArchivePatch } from './lib/types.js';
 
 // ── express app ───────────────────────────────────────────────────────────────
 
@@ -62,33 +65,130 @@ const EDITABLE_ARCHIVE_FIELDS: Record<string, number> = {
   category: 100,
   keywords: 300,
   notes: 2_000,
+  nextAction: 500,
 };
+
+const WORKFLOW_FIELDS = new Set([
+  'intent', 'workflowState', 'difficulty', 'estimatedMinutes', 'priority',
+  'nextAction', 'mediums', 'tools', 'skills',
+]);
+const BULK_WORKFLOW_FIELDS = new Set(['intent', 'workflowState', 'priority', 'mediums', 'tools', 'skills']);
+
+function validateTags(value: unknown, field: string): string[] {
+  if (!Array.isArray(value) || value.length > 20) {
+    throw new TypeError(`"${field}" must be an array of at most 20 tags.`);
+  }
+  const tags = value.map(tag => typeof tag === 'string' ? tag.trim() : '');
+  if (tags.some(tag => !tag || tag.length > 60)) {
+    throw new TypeError(`Every "${field}" tag must contain between 1 and 60 characters.`);
+  }
+  const seen = new Set<string>();
+  return tags.filter(tag => {
+    const key = tag.toLocaleLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function validateArchivePatch(candidate: unknown, { bulk = false } = {}): Partial<ArchivePatch> {
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+    throw new TypeError('A valid patch object is required.');
+  }
+  const input = candidate as Record<string, unknown>;
+  const fields = Object.keys(input);
+  if (fields.length === 0) throw new TypeError('At least one editable field is required.');
+  const allowed = bulk
+    ? BULK_WORKFLOW_FIELDS
+    : new Set([...Object.keys(EDITABLE_ARCHIVE_FIELDS), ...WORKFLOW_FIELDS]);
+  if (fields.some(field => !allowed.has(field))) {
+    throw new TypeError(bulk
+      ? 'Bulk edits support only intent, workflow state, priority, and structured tags.'
+      : 'The patch contains a field that cannot be edited.');
+  }
+
+  const patch: Record<string, unknown> = {};
+  for (const field of fields) {
+    const value = input[field];
+    if (field in EDITABLE_ARCHIVE_FIELDS) {
+      if (typeof value !== 'string') throw new TypeError(`"${field}" must be a string.`);
+      patch[field] = value.trim();
+      if ((patch[field] as string).length > EDITABLE_ARCHIVE_FIELDS[field]) {
+        throw new TypeError(`"${field}" may contain at most ${EDITABLE_ARCHIVE_FIELDS[field]} characters.`);
+      }
+    } else if (field === 'intent') {
+      if (value !== null && !ARCHIVE_INTENTS.includes(value as typeof ARCHIVE_INTENTS[number])) {
+        throw new TypeError('"intent" must be learn, make, reference, dismiss, or null.');
+      }
+      patch.intent = value;
+    } else if (field === 'workflowState') {
+      if (!WORKFLOW_STATES.includes(value as typeof WORKFLOW_STATES[number])) {
+        throw new TypeError('"workflowState" is invalid.');
+      }
+      patch.workflowState = value;
+    } else if (field === 'difficulty') {
+      if (value !== null && !DIFFICULTIES.includes(value as typeof DIFFICULTIES[number])) {
+        throw new TypeError('"difficulty" must be easy, intermediate, advanced, or null.');
+      }
+      patch.difficulty = value;
+    } else if (field === 'estimatedMinutes') {
+      if (value !== null && (!Number.isInteger(value) || (value as number) < 1 || (value as number) > 1_440)) {
+        throw new TypeError('"estimatedMinutes" must be an integer from 1 through 1440, or null.');
+      }
+      patch.estimatedMinutes = value;
+    } else if (field === 'priority') {
+      if (!Number.isInteger(value) || (value as number) < 0 || (value as number) > 5) {
+        throw new TypeError('"priority" must be an integer from 0 through 5.');
+      }
+      patch.priority = value;
+    } else if (field === 'mediums' || field === 'tools' || field === 'skills') {
+      patch[field] = validateTags(value, field);
+    }
+  }
+  if ('category' in patch && !patch.category) throw new TypeError('Category cannot be empty.');
+  return patch as Partial<ArchivePatch>;
+}
 
 // API: edit user-owned archive metadata without changing capture provenance
 app.patch('/api/archive', async (req, res) => {
   const { url, ...candidate } = req.body || {};
   if (typeof url !== 'string' || !url) return res.status(400).json({ error: 'A valid "url" is required.' });
-  const fields = Object.keys(candidate);
-  if (fields.length === 0) return res.status(400).json({ error: 'At least one editable field is required.' });
-  if (fields.some(field => !(field in EDITABLE_ARCHIVE_FIELDS))) {
-    return res.status(400).json({ error: 'Only title, summary, category, keywords, and notes may be edited.' });
+  let patch: Partial<ArchivePatch>;
+  try {
+    patch = validateArchivePatch(candidate);
+  } catch (err) {
+    return res.status(400).json({ error: err instanceof Error ? err.message : 'Invalid archive patch.' });
   }
-  const patch: Record<string, string> = {};
-  for (const field of fields) {
-    if (typeof candidate[field] !== 'string') return res.status(400).json({ error: `"${field}" must be a string.` });
-    patch[field] = candidate[field].trim();
-    if (patch[field].length > EDITABLE_ARCHIVE_FIELDS[field]) {
-      return res.status(400).json({ error: `"${field}" may contain at most ${EDITABLE_ARCHIVE_FIELDS[field]} characters.` });
-    }
-  }
-  if ('category' in patch && !patch.category) return res.status(400).json({ error: 'Category cannot be empty.' });
 
   try {
     const entry = await updateArchive(url, patch);
     if (!entry) return res.status(404).json({ error: 'Entry not found.' });
-    res.json({ success: true, entry });
-  } catch {
+    res.json({ success: true, entry, queue: await getQueueCounts() });
+  } catch (err) {
+    if (err instanceof ArchiveQueueConflictError) return res.status(409).json({ error: err.message });
     res.status(500).json({ error: 'Failed to update archive entry.' });
+  }
+});
+
+// API: triage multiple entries as one atomic workflow mutation
+app.patch('/api/archive/bulk', async (req, res) => {
+  const { urls, patch: candidate } = req.body || {};
+  if (!Array.isArray(urls) || urls.length === 0 || urls.length > 500 || urls.some(url => typeof url !== 'string')) {
+    return res.status(400).json({ error: '"urls" must contain between 1 and 500 URL strings.' });
+  }
+  let patch: Partial<ArchivePatch>;
+  try {
+    patch = validateArchivePatch(candidate, { bulk: true });
+  } catch (err) {
+    return res.status(400).json({ error: err instanceof Error ? err.message : 'Invalid bulk patch.' });
+  }
+  try {
+    const entries = await updateArchives(urls, patch);
+    if (!entries) return res.status(404).json({ error: 'One or more entries were not found.' });
+    res.json({ success: true, updated: entries.length, entries, queue: await getQueueCounts() });
+  } catch (err) {
+    if (err instanceof ArchiveQueueConflictError) return res.status(409).json({ error: err.message });
+    res.status(500).json({ error: 'Failed to update archive entries.' });
   }
 });
 

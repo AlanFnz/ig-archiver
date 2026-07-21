@@ -89,6 +89,44 @@ describe('HTTP API', () => {
     await request(app).patch('/api/archive').send({ url, title: 'No match' }).expect(404)
   })
 
+  it('edits creative workflow metadata with validation', async () => {
+    const original = entry('https://www.instagram.com/p/workflow/')
+    await storage.upsertArchive(original)
+    const response = await request(app)
+      .patch('/api/archive')
+      .send({
+        url: original.url,
+        intent: 'learn', workflowState: 'up_next', difficulty: 'intermediate',
+        estimatedMinutes: 45, priority: 5, nextAction: 'Build one small variation.',
+        mediums: ['Motion'], tools: ['After Effects'], skills: ['Kinetic type'],
+      })
+      .expect(200)
+
+    expect(response.body.entry).toMatchObject({
+      intent: 'learn', workflowState: 'up_next', estimatedMinutes: 45,
+      tools: ['After Effects'], nextAction: 'Build one small variation.',
+    })
+    expect(response.body.queue).toEqual({ inProgress: 0, upNext: 1 })
+    await request(app).patch('/api/archive').send({ url: original.url, priority: 6 }).expect(400)
+    await request(app).patch('/api/archive').send({ url: original.url, estimatedMinutes: 0 }).expect(400)
+  })
+
+  it('applies bulk triage atomically and reports queue conflicts', async () => {
+    const entries = Array.from({ length: 6 }, (_, index) => entry(`https://www.instagram.com/p/bulk-${index}/`))
+    await storage.importArchive(entries)
+    const response = await request(app)
+      .patch('/api/archive/bulk')
+      .send({ urls: entries.slice(0, 5).map(item => item.url), patch: { intent: 'learn', workflowState: 'up_next' } })
+      .expect(200)
+    expect(response.body).toMatchObject({ success: true, updated: 5, queue: { inProgress: 0, upNext: 5 } })
+
+    await request(app)
+      .patch('/api/archive/bulk')
+      .send({ urls: [entries[5].url], patch: { workflowState: 'up_next' } })
+      .expect(409)
+    expect((await storage.findArchiveByUrl(entries[5].url)).workflowState).toBe('inbox')
+  })
+
   it('validates imports and archive jobs', async () => {
     await request(app).post('/api/archive/import').send({ entries: [] }).expect(400)
     await request(app).post('/api/jobs').send({ urls: [] }).expect(400)
