@@ -20,6 +20,7 @@ import {
   ArchiveQueueConflictError,
 } from './lib/db.js';
 import { runArchiveBatch } from './lib/archive-runner.js';
+import { analyzeBacklog } from './lib/backlog.js';
 import { HOST, PORT, PUBLIC_DIR, SCREENSHOTS, SESSION_FILE, getConfig, getPublicConfig, setConfig } from './lib/config.js';
 import { createJobManager } from './lib/jobs.js';
 import { logger } from './lib/logger.js';
@@ -56,6 +57,14 @@ app.get('/api/archive', async (req, res) => {
     res.json(db);
   } catch (err) {
     res.status(500).json({ error: 'Failed to read database.' });
+  }
+});
+
+app.get('/api/archive/backlog-analysis', async (_req, res) => {
+  try {
+    res.json(analyzeBacklog(await readDb()));
+  } catch {
+    res.status(500).json({ error: 'Failed to analyze the archive backlog.' });
   }
 });
 

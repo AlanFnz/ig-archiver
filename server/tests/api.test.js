@@ -44,6 +44,18 @@ describe('HTTP API', () => {
     expect(response.body).toEqual([expect.objectContaining({ title: 'Integration test' })])
   })
 
+  it('summarizes the unreviewed backlog', async () => {
+    await storage.importArchive([
+      entry('https://www.instagram.com/p/analysis-a/'),
+      entry('https://www.instagram.com/p/analysis-b/'),
+    ])
+    const response = await request(app).get('/api/archive/backlog-analysis').expect(200)
+    expect(response.body).toMatchObject({ total: 2, withScreenshot: 0 })
+    expect(response.body.clusters).toEqual(expect.arrayContaining([
+      expect.objectContaining({ dimension: 'category', value: 'References', count: 2 }),
+    ]))
+  })
+
   it('exports and restores portable backups', async () => {
     await storage.upsertArchive(entry('https://www.instagram.com/p/a/'))
     const exported = await request(app).get('/api/archive/export').expect(200)
