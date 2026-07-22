@@ -74,6 +74,9 @@
     .workflow-tab:hover { color: var(--text); background: rgb(255 255 255 / 4%); }
     .workflow-tab.active { border-color: rgb(93 166 237 / 20%); color: white; background: rgb(93 166 237 / 10%); }
     .workflow-tab span { margin-left: 5px; color: var(--subtle); font-variant-numeric: tabular-nums; }
+    .review-trigger { margin-left: auto; border-color: rgb(105 196 154 / 18%); color: #9dd9bc; background: rgb(105 196 154 / 7%); }
+    .review-trigger:disabled { opacity: .4; cursor: not-allowed; }
+    .analysis-trigger { border-color: rgb(156 123 209 / 18%); color: #c5b1ea; background: rgb(156 123 209 / 7%); }
 
     .controls {
       position: sticky; z-index: 10; top: 14px; display: grid; grid-template-columns: minmax(220px, 1fr) auto; gap: 14px;
@@ -153,6 +156,27 @@
     .detail-section p { margin: 0; color: #c7c7d3; font-size: .82rem; line-height: 1.6; overflow-wrap: anywhere; }
     .detail-copy .button { margin-top: auto; text-decoration: none; }
 
+    .review-dialog { width: min(760px, calc(100% - 32px)); }
+    .review-progress { color: var(--subtle); font-size: .7rem; font-variant-numeric: tabular-nums; }
+    .review-body { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(260px, 1fr); gap: 22px; padding: 22px; }
+    .review-copy { display: flex; min-width: 0; flex-direction: column; gap: 12px; }
+    .review-copy h3 { font-size: 1.12rem; line-height: 1.35; }
+    .review-copy p { margin: 0; color: var(--muted); font-size: .78rem; line-height: 1.55; }
+    .review-message { padding: 10px 11px; border-left: 2px solid var(--blue); border-radius: 0 9px 9px 0; color: #b9b9ca !important; background: rgb(255 255 255 / 3%); font-style: italic; }
+    .review-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: auto; padding-top: 8px; }
+    .review-actions .button { min-height: 42px; }
+    .review-skip { grid-column: 1 / -1; color: var(--muted); }
+    .analysis-body { display: grid; gap: 20px; padding: 22px; }
+    .analysis-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .analysis-stat { padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: rgb(255 255 255 / 2%); }
+    .analysis-stat strong { display: block; margin-bottom: 4px; font-family: Outfit, sans-serif; font-size: 1.2rem; }
+    .analysis-stat span { color: var(--subtle); font-size: .66rem; line-height: 1.35; }
+    .cluster-list { display: flex; flex-wrap: wrap; gap: 8px; }
+    .cluster-button { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; color: var(--muted); background: rgb(255 255 255 / 2%); cursor: pointer; font-size: .71rem; }
+    .cluster-button:hover { border-color: var(--border-bright); color: var(--text); }
+    .cluster-button strong { color: #c5b1ea; font-size: .65rem; font-weight: 500; text-transform: uppercase; }
+    .cluster-button span { color: var(--text); font-variant-numeric: tabular-nums; }
+
     .settings-dialog { width: min(690px, calc(100% - 32px)); }
     .settings-form { display: grid; gap: 22px; padding: 22px; overflow: auto; }
     .settings-section { display: grid; gap: 13px; }
@@ -192,6 +216,8 @@
       .bulk-actions { width: 100%; }
       .bulk-actions .button { flex: 1; }
       .detail-body { grid-template-columns: 1fr; }
+      .review-body { grid-template-columns: 1fr; }
+      .analysis-stats { grid-template-columns: repeat(2, 1fr); }
     }
     @media (max-width: 480px) {
       .shell { width: min(100% - 18px, 1240px); }
@@ -313,6 +339,38 @@
     </form>
   </dialog>
 
+  <dialog class="review-dialog" id="review-dialog" aria-labelledby="review-title">
+    <div class="dialog-head">
+      <div><h2 id="review-title">Review three saves</h2><p class="eyebrow">A small decision, not an endless cleanup</p></div>
+      <div class="review-progress" id="review-progress"></div>
+      <button class="dialog-close" type="button" data-close="review-dialog" aria-label="Close">×</button>
+    </div>
+    <div class="review-body">
+      <div class="detail-image" id="review-image"></div>
+      <div class="review-copy">
+        <h3 id="review-entry-title"></h3>
+        <p class="review-message" id="review-message"></p>
+        <p id="review-summary"></p>
+        <div class="review-actions" aria-label="Choose what this save is for">
+          <button class="button button-primary" type="button" data-review-intent="learn">Learn</button>
+          <button class="button button-primary" type="button" data-review-intent="make">Make</button>
+          <button class="button" type="button" data-review-intent="reference">Reference</button>
+          <button class="button" type="button" data-review-intent="dismiss">Cold Storage</button>
+          <button class="button review-skip" id="review-skip" type="button">Skip for now</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="settings-dialog" id="analysis-dialog" aria-labelledby="analysis-title">
+    <div class="dialog-head"><div><h2 id="analysis-title">Backlog overview</h2><p class="eyebrow">Patterns in unreviewed captures</p></div><button class="dialog-close" type="button" data-close="analysis-dialog" aria-label="Close">×</button></div>
+    <div class="analysis-body">
+      <div class="analysis-stats" id="analysis-stats"></div>
+      <section class="detail-section"><h3>Recurring clusters</h3><div class="cluster-list" id="cluster-list"></div></section>
+      <p class="hint" id="analysis-hint">Clusters are calculated locally from existing categories, keywords, tools, mediums, and skills. No AI request is made.</p>
+    </div>
+  </dialog>
+
   <dialog class="settings-dialog" id="settings-dialog" aria-labelledby="settings-title">
     <div class="dialog-head"><div><h2 id="settings-title">Archive settings</h2><p class="eyebrow">Applied to the next capture</p></div><button class="dialog-close" type="button" data-close="settings-dialog" aria-label="Close">×</button></div>
     <form id="settings-form">
@@ -352,7 +410,7 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script>
-    const state = { entries: [], config: null, view: 'inbox', category: 'All', query: '', selecting: false, selected: new Set(), activeEntry: null };
+    const state = { entries: [], config: null, view: 'inbox', category: 'All', intentFilter: 'all', query: '', selecting: false, selected: new Set(), activeEntry: null, reviewEntries: [], reviewIndex: 0, reviewDecisions: 0 };
     const grid = document.querySelector('#grid');
     const filters = document.querySelector('#filters');
     const workflowNav = document.querySelector('#workflow-nav');
@@ -361,6 +419,8 @@
     const detailDialog = document.querySelector('#detail-dialog');
     const settingsDialog = document.querySelector('#settings-dialog');
     const editDialog = document.querySelector('#edit-dialog');
+    const reviewDialog = document.querySelector('#review-dialog');
+    const analysisDialog = document.querySelector('#analysis-dialog');
     const selectButton = document.querySelector('#select-button');
     const bulkBar = document.querySelector('#bulk-bar');
     let toastTimer;
@@ -472,9 +532,10 @@
       const entries = state.entries.filter(entry => {
         if (!entryInView(entry)) return false;
         const matchesCategory = state.category === 'All' || categoryNames(entry.category).includes(state.category);
-        const haystack = [entry.title, entry.summary, entry.metaDescription, entry.userMessage, entry.keywords, entry.notes, entry.nextAction, ...(entry.mediums || []), ...(entry.tools || []), ...(entry.skills || [])]
+        const matchesIntent = state.intentFilter === 'all' || entry.intent === state.intentFilter;
+        const haystack = [entry.title, entry.summary, entry.category, entry.metaDescription, entry.userMessage, entry.keywords, entry.notes, entry.nextAction, ...(entry.mediums || []), ...(entry.tools || []), ...(entry.skills || [])]
           .filter(value => typeof value === 'string').join(' ').toLocaleLowerCase();
-        return matchesCategory && (!state.query || haystack.includes(state.query));
+        return matchesCategory && matchesIntent && (!state.query || haystack.includes(state.query));
       });
       if (state.view === 'up_next') {
         entries.sort((a, b) => {
@@ -490,7 +551,7 @@
       const views = [
         ['inbox', 'Inbox'], ['up_next', 'Up Next'], ['library', 'Library'], ['cold_storage', 'Cold Storage'],
       ];
-      workflowNav.replaceChildren(...views.map(([value, label]) => {
+      const tabs = views.map(([value, label]) => {
         const button = document.createElement('button');
         const total = state.entries.filter(entry => entryInView(entry, value)).length;
         button.type = 'button';
@@ -499,10 +560,125 @@
         button.append(document.createTextNode(label));
         const badge = document.createElement('span'); badge.textContent = String(total); button.append(badge);
         button.addEventListener('click', () => {
-          state.view = value; state.category = 'All'; setSelectionMode(false); renderWorkflowNav(); renderFilters(); renderGrid();
+          state.view = value; state.category = 'All'; state.intentFilter = 'all'; setSelectionMode(false); renderWorkflowNav(); renderFilters(); renderGrid();
         });
         return button;
-      }));
+      });
+      const review = document.createElement('button');
+      const inboxCount = state.entries.filter(entry => entryInView(entry, 'inbox')).length;
+      review.type = 'button';
+      review.className = 'workflow-tab review-trigger';
+      const reviewCount = Math.min(3, inboxCount);
+      review.textContent = reviewCount ? `Review ${reviewCount} save${reviewCount === 1 ? '' : 's'}` : 'Inbox clear';
+      review.disabled = inboxCount === 0;
+      review.addEventListener('click', startReview);
+      const analysis = document.createElement('button');
+      analysis.type = 'button';
+      analysis.className = 'workflow-tab analysis-trigger';
+      analysis.textContent = 'Backlog overview';
+      analysis.disabled = inboxCount === 0;
+      analysis.addEventListener('click', openBacklogAnalysis);
+      workflowNav.replaceChildren(...tabs, review, analysis);
+    }
+
+    async function openBacklogAnalysis() {
+      const stats = document.querySelector('#analysis-stats');
+      const clusters = document.querySelector('#cluster-list');
+      stats.textContent = 'Analyzing backlog…';
+      clusters.replaceChildren();
+      analysisDialog.showModal();
+      try {
+        const result = await api('/api/archive/backlog-analysis');
+        const values = [
+          [result.total, 'Unreviewed captures'],
+          [result.withOriginalMessage, 'With your original message'],
+          [result.withScreenshot, 'With a screenshot'],
+          [result.olderThanOneYear, 'Older than one year'],
+        ];
+        stats.replaceChildren(...values.map(([value, label]) => {
+          const item = document.createElement('div'); item.className = 'analysis-stat';
+          const number = document.createElement('strong'); number.textContent = String(value);
+          const copy = document.createElement('span'); copy.textContent = label;
+          item.append(number, copy); return item;
+        }));
+        if (!result.clusters.length) {
+          const empty = document.createElement('p'); empty.className = 'hint';
+          empty.textContent = 'No recurring metadata clusters yet. Review or enrich more captures to improve this overview.';
+          clusters.replaceChildren(empty);
+        } else {
+          clusters.replaceChildren(...result.clusters.map(cluster => {
+            const button = document.createElement('button'); button.type = 'button'; button.className = 'cluster-button';
+            const dimension = document.createElement('strong'); dimension.textContent = cluster.dimension;
+            const label = document.createTextNode(cluster.value);
+            const amount = document.createElement('span'); amount.textContent = String(cluster.count);
+            button.append(dimension, label, amount);
+            button.addEventListener('click', () => focusBacklogCluster(cluster.value));
+            return button;
+          }));
+        }
+      } catch (err) {
+        stats.replaceChildren();
+        const error = document.createElement('p'); error.className = 'form-error visible'; error.textContent = err.message;
+        clusters.replaceChildren(error);
+      }
+    }
+
+    function focusBacklogCluster(value) {
+      state.view = 'inbox'; state.category = 'All'; state.intentFilter = 'all';
+      state.query = value.toLocaleLowerCase();
+      document.querySelector('#search').value = value;
+      analysisDialog.close();
+      renderWorkflowNav(); renderFilters(); renderGrid();
+    }
+
+    function startReview() {
+      state.reviewEntries = state.entries.filter(entry => entryInView(entry, 'inbox')).slice(0, 3);
+      state.reviewIndex = 0;
+      state.reviewDecisions = 0;
+      if (!state.reviewEntries.length) return;
+      renderReviewEntry();
+      reviewDialog.showModal();
+    }
+
+    function renderReviewEntry() {
+      const entry = state.reviewEntries[state.reviewIndex];
+      if (!entry) {
+        reviewDialog.close();
+        renderWorkflowNav(); renderFilters(); renderGrid();
+        showToast(`Review complete: ${state.reviewDecisions} decision${state.reviewDecisions === 1 ? '' : 's'} made.`);
+        return;
+      }
+      document.querySelector('#review-progress').textContent = `${state.reviewIndex + 1} of ${state.reviewEntries.length}`;
+      document.querySelector('#review-entry-title').textContent = entry.title || 'Untitled capture';
+      document.querySelector('#review-summary').textContent = entry.summary || entry.metaDescription || 'No description is available.';
+      const message = document.querySelector('#review-message');
+      message.hidden = !entry.userMessage;
+      message.textContent = entry.userMessage ? `“${entry.userMessage}”` : '';
+      const image = makeImage(entry);
+      document.querySelector('#review-image').replaceChildren(...image.childNodes);
+    }
+
+    async function decideReviewIntent(intent) {
+      const entry = state.reviewEntries[state.reviewIndex];
+      if (!entry) return;
+      const workflowState = intent === 'dismiss' ? 'cold_storage' : 'inbox';
+      document.querySelectorAll('[data-review-intent], #review-skip').forEach(button => { button.disabled = true; });
+      try {
+        const result = await api('/api/archive', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: entry.url, intent, workflowState }),
+        });
+        state.entries = state.entries.map(item => item.url === result.entry.url ? result.entry : item);
+        state.reviewDecisions++;
+        state.reviewIndex++;
+        renderReviewEntry();
+      } catch (err) { showToast(err.message, true); }
+      finally { document.querySelectorAll('[data-review-intent], #review-skip').forEach(button => { button.disabled = false; }); }
+    }
+
+    function skipReviewEntry() {
+      state.reviewIndex++;
+      renderReviewEntry();
     }
 
     function renderFilters() {
@@ -510,7 +686,7 @@
       state.entries.forEach(entry => categoryNames(entry.category).forEach(category => available.add(category)));
       const names = ['All', ...Array.from(available).sort((a, b) => a.localeCompare(b))];
       if (!names.includes(state.category)) state.category = 'All';
-      filters.replaceChildren(...names.map(name => {
+      const categoryButtons = names.map(name => {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = `filter${state.category === name ? ' active' : ''}`;
@@ -518,7 +694,19 @@
         button.setAttribute('aria-pressed', String(state.category === name));
         button.addEventListener('click', () => { state.category = name; renderFilters(); renderGrid(); });
         return button;
-      }));
+      });
+      const intentButtons = state.view === 'library'
+        ? [['all', 'All intents'], ['learn', 'Intent: Learn'], ['make', 'Intent: Make'], ['reference', 'Intent: Reference']].map(([value, label]) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = `filter${state.intentFilter === value ? ' active' : ''}`;
+          button.textContent = label;
+          button.setAttribute('aria-pressed', String(state.intentFilter === value));
+          button.addEventListener('click', () => { state.intentFilter = value; renderFilters(); renderGrid(); });
+          return button;
+        })
+        : [];
+      filters.replaceChildren(...intentButtons, ...categoryButtons);
     }
 
     function renderEmpty(title, message) {
@@ -919,6 +1107,8 @@
     document.querySelector('#mark-reference').addEventListener('click', () => bulkTriage({ intent: 'reference', workflowState: 'inbox' }, 'capture(s) marked as references.'));
     document.querySelector('#move-cold').addEventListener('click', () => bulkTriage({ intent: 'dismiss', workflowState: 'cold_storage' }, 'capture(s) moved to Cold Storage.'));
     document.querySelector('#move-inbox').addEventListener('click', () => bulkTriage({ intent: null, workflowState: 'inbox' }, 'capture(s) restored to Inbox.'));
+    document.querySelectorAll('[data-review-intent]').forEach(button => button.addEventListener('click', () => decideReviewIntent(button.dataset.reviewIntent)));
+    document.querySelector('#review-skip').addEventListener('click', skipReviewEntry);
     document.querySelector('#cancel-selection').addEventListener('click', () => setSelectionMode(false));
     document.querySelector('#settings-button').addEventListener('click', () => { fillSettings(); settingsDialog.showModal(); });
     document.querySelector('#settings-form').addEventListener('submit', saveSettings);
@@ -926,7 +1116,7 @@
     document.querySelector('#edit-form').addEventListener('submit', saveEntry);
     document.querySelector('#clear-key').addEventListener('click', clearApiKey);
     document.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => document.querySelector(`#${button.dataset.close}`).close()));
-    [detailDialog, settingsDialog, editDialog].forEach(dialog => dialog.addEventListener('click', event => {
+    [detailDialog, settingsDialog, editDialog, reviewDialog, analysisDialog].forEach(dialog => dialog.addEventListener('click', event => {
       const bounds = dialog.getBoundingClientRect();
       if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close();
     }));

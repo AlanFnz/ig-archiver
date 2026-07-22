@@ -198,6 +198,10 @@ Every new and migrated capture begins in **Inbox** and is never promoted automat
 
 The active workflow deliberately allows only one In Progress item and five Up Next items. These limits are enforced transactionally by the server, including during bulk triage. Cold Storage remains searchable but is excluded from the active library and queue. Recapturing an existing Instagram URL refreshes capture provenance without erasing curated workflow metadata.
 
+For large historical archives, **Review three saves** opens a bounded triage session instead of an infinite cleanup screen. Each save can be marked Learn, Make, Reference, or Cold Storage, or skipped without changing it. Learn and Make decisions remain outside the five-item queue until explicitly promoted and can be found through the Library intent filters.
+
+**Backlog overview** summarizes unreviewed volume, original-message and screenshot coverage, age, and recurring metadata clusters. This first analysis is deterministic and local: it uses existing categories, keywords, mediums, tools, and skills without sending another AI request. Selecting a cluster filters Inbox to the matching captures.
+
 ---
 
 ## Testing
